@@ -12,14 +12,10 @@
 #   - `checked` — F* verification of src/ + test/ (the 0-admit gate).
 #   - `ocaml`   — findlib package of the pure spec modules
 #                 (`Data.Codec.Types` + `Data.Codec`).
+#   - `native`  — C11 shared/static lib of the Pulse leaf (`Data.Codec.Low`)
+#                 via Custard (`--custard_backend C`), no karamel.
 #
-# The `.Low` C leaf (`Data.Codec.Low`) is not in a backend yet: the KaRaMeL
-# Low* target was removed with the karamel toolchain, and the Custard
-# direct-C backend extracts Pulse, not the `Stack`/`LowStar.Buffer` style the
-# leaf is currently written in.  Porting the leaf to Pulse is tracked as the
-# next change.
-#
-# Returns { checked; ocaml; }.
+# Returns { checked; ocaml; native; }.
 
 { fstar, fstar-checked, lib, ocamlPackages, stdenv }:
 
@@ -126,7 +122,70 @@ DUNE
     ];
     OCAMLPATH = "${fstar}/lib";
   };
+
+  # ── native (C) backend via Custard ─────────────────────────────────
+  #
+  # `--codegen Custard --custard_backend C` extracts the Pulse leaf
+  # (`Data.Codec.Low`) to C11 with no karamel runtime.  The whole module is a
+  # library (no `main`), rooted with `--custard_entry_module`.  The C backend
+  # requires `--custard_monomorphize_types true`.
+
+  flib = "${fstar}/lib/fstar";
+  pulse-incs = [
+    "${flib}/pulse/common"
+    "${flib}/pulse/common.checked"
+    "${flib}/pulse/pulse/lib"
+    "${flib}/pulse/pulse.checked"
+  ];
+
+  native = mkDerivation {
+    pname = "${pname}-native";
+    version = "0.1.0";
+    src = ./. ;
+    nativeBuildInputs = [ fstar fstar-checked ];
+    inherit meta;
+    buildPhase = ''
+      mkdir -p $out cache
+      ULIB="${flib}/ulib"
+      PULSE_INCS=""
+      for d in ${lib.concatStringsSep " " pulse-incs}; do
+        PULSE_INCS="$PULSE_INCS --include $d"
+      done
+      # Seed the cache with pre-verified stdlib `.checked` files so
+      # `--already_cached Prims,FStar,...` can resolve (Error 317 otherwise).
+      cp ${fstar-checked}/*.checked cache/ 2>/dev/null || true
+      # Verify in dependency order into a cache so cross-module inlining
+      # (Error 317) can find our own modules' `.checked` files.
+      for m in Data.Codec.Types Data.Codec Data.Codec.Low; do
+        ${fstar-exe} \
+          --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src \
+          --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
+          --z3rlimit 120 \
+          --cache_checked_modules --cache_dir cache --odir cache \
+          src/$m.fst || exit 1
+      done
+      # Extract the whole `Data.Codec.Low` module to C (library mode).
+      ${fstar-exe} \
+        --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src --include cache \
+        --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
+        --cache_checked_modules --cache_dir cache \
+        --codegen Custard --custard_backend C --custard_monomorphize_types true \
+        --custard_entry_module Data.Codec.Low --odir $out \
+        src/Data.Codec.Low.fst || exit 1
+      # Compile the emitted C11 to a shared object + static lib (no karamel).
+      cc -c -Wall -Wextra -Werror -std=c11 -O2 -fPIC -I $out $out/Custard.c -o $out/Custard.o
+      if [ "$(uname -s)" = Darwin ]; then
+        cc -dynamiclib $out/Custard.o -o $out/lib${pname}.dylib
+      else
+        cc -shared $out/Custard.o -o $out/lib${pname}.so
+      fi
+      ar rcs $out/lib${pname}.a $out/Custard.o
+      # Publish a stable header name alongside Custard.h.
+      cp $out/Custard.h $out/fstar_codec.h
+    '';
+    installPhase = "true";
+  };
 in
 {
-  inherit checked ocaml;
+  inherit checked ocaml native;
 }

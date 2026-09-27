@@ -143,6 +143,7 @@
         packages.default = _pkg.checked;
         packages.fstar-codec-checked = _pkg.checked;
         packages.fstar-codec-ocaml = _pkg.ocaml;
+        packages.fstar-codec-native = _pkg.native;
 
         devShells.default = pkgs.mkShell {
             dontDetectOcamlConflicts = true;
