@@ -93,15 +93,16 @@
           ];
         };
 
-        inherit (pkgs) stdenv fstar karamel fstar-checked fstar-krml lib;
+        inherit (pkgs) stdenv fstar karamel fstar-checked fstar-krml lib rustc;
         inherit (pkgs) ocamlPackages;
 
-        # The package.  All derivation logic (verify + extract) lives in
-        # default.nix, which takes the toolchain by named argument and
-        # delegates module order to the Makefile.  This flake only re-exposes
-        # the two targets (a library has no exe/native/rust/ocaml/wasm).
+        # The package.  All derivation logic (verify + extract + backends)
+        # lives in default.nix, which takes the toolchain by named argument
+        # and delegates module order to the Makefile.  This flake only
+        # re-exposes the targets (everything but F#; no exe, as the library
+        # has no `main`).
         _pkg = import ./default.nix {
-          inherit fstar fstar-checked fstar-krml karamel lib stdenv;
+          inherit fstar fstar-checked fstar-krml karamel lib ocamlPackages rustc stdenv;
         };
 
       in
@@ -109,6 +110,10 @@
         packages.default = _pkg.krml;
         packages.fstar-codec-checked = _pkg.checked;
         packages.fstar-codec-krml = _pkg.krml;
+        packages.fstar-codec-native = _pkg.native;
+        packages.fstar-codec-rust = _pkg.rust;
+        packages.fstar-codec-ocaml = _pkg.ocaml;
+        packages.fstar-codec-wasm = _pkg.wasm;
 
         devShells.default = pkgs.mkShell {
             dontDetectOcamlConflicts = true;

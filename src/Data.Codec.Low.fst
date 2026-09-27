@@ -116,6 +116,7 @@ let lemma_u32_add_no_overflow (x y: U32.t) : Lemma
 (** encode_varint ensures, encode_bytes ensures CT_Varint, *)
 (** lemma_encode_varint_matches_pure, lemma_encode_varint_eq_buffer. *)
 (** Outer `if` guards Seq.index bounds; inner 5-range if describes bytes. *)
+noextract
 let varint_encode_pred (n: nat) (s: Seq.seq U8.t) (i: nat) : prop =
   if i + nbytes_of_varint n <= Seq.length s then
     (if n < 128 then
@@ -546,7 +547,7 @@ let decode_word32le (b: LB.buffer U8.t) (i: U32.t) (n: U32.t)
 (** varint_decode_expected; divergence causes verification failure. *)
 #push-options "--z3rlimit 20"
 let varint_decode_expected (s: Seq.seq U8.t) (i: U32.t) (n: U32.t)
-  : Pure decode_result_c
+  : Ghost decode_result_c
     (requires U32.v i + U32.v n <= Seq.length s)
     (ensures fun _ -> True)
   =
