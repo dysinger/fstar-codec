@@ -19,20 +19,34 @@ FSTAR ?= fstar.exe
 
 ULIB := $(shell $(FSTAR) --locate_lib 2>/dev/null || echo /none)/ulib
 
+# Pulse ships in the install under $(locate_lib)/pulse (sources under
+# pulse/{common,pulse/lib}, `.checked` under pulse/{common.checked,
+# pulse.checked}).  Data.Codec.Low (in Pulse) needs these, since FSTAR_FLAGS
+# uses --no_default_includes.
+FLIB := $(shell $(FSTAR) --locate_lib 2>/dev/null || echo /none)
+PULSE_DIRS := $(FLIB)/pulse/common\
+  $(FLIB)/pulse/common.checked\
+  $(FLIB)/pulse/pulse/lib\
+  $(FLIB)/pulse/pulse.checked
+
 FSTAR_FLAGS = --no_default_includes \
   --include $(ULIB) \
+  $(foreach d,$(PULSE_DIRS),--include $(d)) \
   --include ./src
 
 # ── F* verification ───────────────────────────────────────────────
 
 # Source modules in DEPENDENCY ORDER (leaf modules first).
 #
-# NOTE: Data.Codec.Low (the KaRaMeL Low* leaf) is excluded: F* v2026.09.20
-# removed the entire Low*/KaRaMeL stdlib (FStar.HyperStack, FStar.HyperStack.ST,
-# LowStar.Buffer), so it cannot typecheck anymore.  Porting it to Pulse is the
-# next change.  The two test modules likewise depend on Data.Codec.Low and are
-# excluded until then.
-SRC_MODS := Data.Codec.Types Data.Codec
+# Data.Codec.Low is back in: it was rewritten in Pulse (see AGENTS.md) and
+# verifies/extracts via Custard.  The two test modules still `open` the old
+# Low*/Stack surface and are excluded pending their Pulse rewrite (T3.2).
+SRC_MODS := Data.Codec.Types Data.Codec Data.Codec.Low
+
+# Pulse-only modules skip re-verification (they ship pre-verified in the F*
+# install); Data.Codec.Low opens Pulse.Lib.* which would otherwise time out
+# re-verifying the whole Pulse stdlib on every `make check`.
+ALREADY_CACHED := Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore
 
 .PHONY: check clean
 
@@ -61,6 +75,7 @@ $(OUT)/checked/%.fst.checked: src/%.fst
 	@echo "=== $* ==="
 	$(FSTAR) $(FSTAR_FLAGS) \
 	  --z3rlimit 80 \
+	  --already_cached $(ALREADY_CACHED) \
 	  --cache_checked_modules --cache_dir $(OUT)/checked \
 	  --odir $(OUT)/checked $<
 
