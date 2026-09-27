@@ -87,13 +87,27 @@ nix build
 nix build .#fstar-codec-checked   # F* verification of src/ + test/
 nix build .#fstar-codec-krml      # KaRaMeL extraction (depends on checked)
 
-# Interactive checking via the editor LSP (fstar.exe --lsp on PATH)
-nix develop
+# Dev loop (no nix): verify + extract via the Makefile
+nix develop && make check && make krml
 ```
 
 `nix build` with no argument builds the default package, `fstar-codec-krml`.
 The authoritative verification gate is `nix build .#fstar-codec-checked`; the
 LSP is a dev-loop aid, not a substitute.
+
+The build is three layers, one per environment:
+
+| File | Responsibility | Works without flakes? |
+|------|----------------|-----------------------|
+| `flake.nix` | inputs/outputs + `devShell` only | no (needs flakes) |
+| `default.nix` | builds the targets (`checked` / `krml`) | yes (`nix-build` / `import`) |
+| `Makefile` | the shell-script build (module order) | yes (plain `fstar`/`karamel` on PATH) |
+
+The nixpkgs overlay (in `flake.nix`) builds `fstar`, `karamel`,
+`fstar-checked`, and `fstar-krml` from the pinned forks; the flake passes them
+to `default.nix` by named argument.  `default.nix` delegates verification and
+extraction to the `Makefile` (`make check` / `make krml`), which owns the
+module list and its dependency order.
 
 ## Architecture
 
