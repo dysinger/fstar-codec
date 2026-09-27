@@ -1,22 +1,14 @@
 # Copyright 2026 Department of Code LLC.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-# F* dev-loop build (verify + KaRaMeL extract + native link).
+# F* dev-loop build (verify + KaRaMeL extract).
 #
-# Usage: nix develop, then `make check` / `make krml` / `make exe`.
+# Usage: nix develop, then `make check` / `make krml`.
 #
 # The FSTAR_KRML / KRML_HOME / KRM_LIB / KRM_INC env vars are exported by the
 # flake devShell (see flake.nix shellHook).  Override them here if needed.
 
 # ── Tools ──────────────────────────────────────────────────────────
-
-CC ?= cc
-CFLAGS = -O3 -fno-strict-aliasing -ffunction-sections -fdata-sections
-ifeq ($(shell uname),Darwin)
-  LDFLAGS = -Wl,-dead_strip
-else
-  LDFLAGS = -Wl,--gc-sections
-endif
 
 # Build output directory.  Defaults to `./out` for the dev loop; nix
 # derivations (default.nix) override it to `$out` so the Makefile writes
@@ -24,12 +16,11 @@ endif
 OUT ?= out
 
 FSTAR ?= fstar.exe
-KRML  ?= krml
 
 # These are supplied by the flake devShell's shellHook, which exports
 # FSTAR_KRML / FSTAR_CHECKED / KRML_HOME / KRM_LIB / KRM_INC.  Make imports
 # them from the environment as ordinary variables of the same name; passing
-# e.g. `make exe KRM_LIB=/elsewhere` on the command line simply overrides the
+# e.g. `make krml KRM_LIB=/elsewhere` on the command line simply overrides the
 # environment import.  No `?=` here (a same-name `?= $(VAR)` is a recursive
 # self-reference when the env var is missing).  The guards below make a
 # missing value fail loudly instead of silently mis-resolving.
@@ -44,8 +35,6 @@ ifeq ($(KRM_LIB),)
 $(error KRM_LIB is not set; run `nix develop` (or export it yourself) before `make`)
 endif
 
-KRM_LIB_A ?= $(KRM_LIB)/dist/generic/libkrmllib.a
-
 ULIB := $(shell $(FSTAR) --locate_lib 2>/dev/null || echo /none)/ulib
 KRM_LIB_DIR := $(or $(KRML_HOME)/krmllib,$(KRM_LIB))
 
@@ -59,23 +48,21 @@ FSTAR_FLAGS = --no_default_includes \
 
 # Source modules in DEPENDENCY ORDER (leaf modules first), overriding the
 # template's auto-discovered `sort` which would alphabetize Data.Codec before
-# Data.Codec.Types (Warning 247).  Keep in sync with default.nix's
-# `ordered-src-modules`.
+# Data.Codec.Types and trigger F* Warning 247 (a dependent module verified
+# before its leaf never writes its .checked).  Note: Data.Codec.Low depends on
+# Data.Codec.Types only (it does not open Data.Codec), so this order is a
+# valid linearization (Types -> Codec, Types -> Low), not a minimal chain.
 SRC_MODS := Data.Codec.Types Data.Codec Data.Codec.Low
 
 # Modules to extract to C via KaRaMeL.  A library extracts only its `.Low`
-# (C-extractable) modules.
+# (C-extractable) modules.  Fail loudly if the filter ever comes up empty
+# (e.g. due to a copy-paste of the `grep '\.Low\.'` defect) rather than
+# silently producing an empty krml artifact.
 _LO_MODS := $(filter %.Low,$(SRC_MODS))
 KRML_MODS := $(if $(_LO_MODS),$(_LO_MODS),$(SRC_MODS))
-
-# The source module name is auto-discovered from `module Foo` in src/*.fst,
-# so a module rename (file + `module` header) needs NO Makefile edit.  MODULE
-# is the (capitalized) module name; PNAME is the native executable basename.
-# PNAME is OVERRIDEABLE (the flake's <pname>-exe derivation passes it as the
-# project name); standalone `make exe` falls back to the lowercased module
-# name.
-MODULE := $(firstword $(SRC_MODS))
-PNAME  ?= $(shell printf '%s' '$(MODULE)' | tr 'A-Z' 'a-z')
+ifeq ($(KRML_MODS),)
+$(error KRML_MODS is empty; expected at least one .Low module to extract)
+endif
 
 .PHONY: check krml clean
 
