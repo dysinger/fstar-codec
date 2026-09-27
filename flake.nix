@@ -93,53 +93,22 @@
           ];
         };
 
-        inherit (pkgs) stdenv fstar karamel fstar-checked fstar-krml;
+        inherit (pkgs) stdenv fstar karamel fstar-checked fstar-krml lib;
         inherit (pkgs) ocamlPackages;
 
-        # ── single source of truth for renaming ────────────────────────
-        #
-        # ── single source of truth for renaming ────────────────────────
-        #
-        # Edit ONE binding below to rename the whole project.  Everything
-        # user-facing (flake attribute names, exe/library basename, `.so`/
-        # `.rlib`/ocaml-package names, the wasm `-no-prefix`) derives from it:
-        #
-        #   pname "fstar-example"  ->  .#fstar-example-checked, bin/fstar-example, libfstar-example.so, ...
-        #   pname "i18n"           ->  .#i18n-checked,          bin/i18n,          libi18n.so,          ...
-        #
-        # The F* module is intentionally a GENERIC, never-renamed name
-        # (`Example` below) so a rename is ONE edit here — there is no
-        # `nix flake init --name` flag.  (The module stays `Example` unless
-        # you also want to rename the source module — see README step 2.)
-        pname = "fstar-codec";
-
-        # Source modules in DEPENDENCY ORDER (leaf modules first).  The
-        # library has no `main`; `Data.Codec.Low` is the single C-extractable
-        # (`.Low`) module, extracted by default.nix's `.Low` filter.
-        ordered-src-modules = [
-          "Data.Codec.Types"
-          "Data.Codec"
-          "Data.Codec.Low"
-        ];
-
-        # Test modules in DEPENDENCY ORDER (Integration opens Roundtrip).
-        ordered-test-modules = [
-          "Data.Codec.Test.Roundtrip"
-          "Data.Codec.Test.Integration"
-        ];
-
-        # The package (verify + extract), in the codec/default.nix shape.
-        # default.nix returns rename-agnostic { checked; krml; }; the flake
-        # exposes them as packages.<pname>-checked / -krml.
+        # The package.  All derivation logic (verify + extract) lives in
+        # default.nix, which takes the toolchain by named argument and
+        # delegates module order to the Makefile.  This flake only re-exposes
+        # the two targets (a library has no exe/native/rust/ocaml/wasm).
         _pkg = import ./default.nix {
-          inherit pkgs pname ordered-src-modules ordered-test-modules;
+          inherit fstar fstar-checked fstar-krml karamel lib stdenv;
         };
 
       in
       {
         packages.default = _pkg.krml;
-        packages."${pname}-checked" = _pkg.checked;
-        packages."${pname}-krml" = _pkg.krml;
+        packages.fstar-codec-checked = _pkg.checked;
+        packages.fstar-codec-krml = _pkg.krml;
 
         devShells.default = pkgs.mkShell {
             dontDetectOcamlConflicts = true;

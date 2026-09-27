@@ -1,102 +1,75 @@
 # Copyright 2026 Department of Code LLC.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-# Minimal verified F* package (multi-module library, .Low-extract).
+# fstar-codec — Data.Codec verified bidirectional codec library.
 #
-# Takes pkgs with fstar, karamel, fstar-checked in scope (from the nixpkgs
-# overlay in the top-level flake), plus the project name and the ordered list
-# of source modules (both threaded from the top-level flake).
+# Takes the F* / KaRaMeL toolchain as concrete derivations (no `pkgs` blob, no
+# overlay assumption, no module-name/order arguments).  Module names and their
+# dependency order live in the Makefile (the no-nix build); `checked` and
+# `krml` delegate to `make`, exporting the toolchain paths the Makefile
+# already reads.  A library has no `main`, so there are no exe/native/rust/
+# ocaml/wasm targets.
 #
-# Returns { checked; krml; } — rename-agnostic keys.  The top-level flake
-# exposes them as packages.<pname>-checked / -krml.
+# Returns { fstar-codec-checked; fstar-codec-krml; }.
 
-{ pkgs, pname ? "fstar-example", ordered-src-modules ? ["Data.Codec.Types" "Data.Codec" "Data.Codec.Low"], ordered-test-modules ? ["Data.Codec.Test.Roundtrip" "Data.Codec.Test.Integration"] }:
+{ fstar, fstar-checked, fstar-krml, karamel, lib, stdenv }:
 
 let
-  inherit (pkgs) stdenv fstar karamel fstar-checked;
+  inherit (stdenv) mkDerivation;
+
+  pname = "fstar-codec";
 
   fstar-exe = "${fstar}/bin/fstar.exe";
-  ulib = "${fstar}/lib/fstar/ulib";
-  krmllib = "${karamel.home}/krmllib";
+  krml-exe = "${karamel}/bin/krml";
 
-  fstar-flags = "--no_default_includes --include ${ulib} --include ./src --include ${krmllib} --include ${krmllib}/obj --z3rlimit 80";
+  meta = {
+    license = lib.licenses.agpl3Plus;
+    maintainers = [{
+      name = "Tim Dysinger";
+      email = "tim@dysinger.net";
+    }];
+  };
 
-  # Source modules in DEPENDENCY ORDER (leaf modules first).  Required so the
-  # .checked files land in $out in the right order (Warning 247).
-  checked = stdenv.mkDerivation {
+  # The toolchain environment the Makefile reads (see its guards).
+  make-env = ''
+    export FSTAR="${fstar-exe}"
+    export KRML="${krml-exe}"
+    export FSTAR_KRML="${fstar-krml}"
+    export FSTAR_CHECKED="${fstar-checked}"
+    export KRML_HOME="${karamel.home}"
+    export KRM_LIB="${karamel.home}/krmllib"
+    export KRM_INC="-I${karamel.home}/include -I${karamel.home}/krmllib/c -I${karamel.home}/krmllib/dist/minimal"
+  '';
+
+  checked = mkDerivation {
     pname = "${pname}-checked";
     version = "0.1.0";
     src = ./.;
-    nativeBuildInputs = [ fstar ];
-    meta = {
-      license = pkgs.lib.licenses.agpl3Plus;
-      maintainers = [{
-        name = "Tim Dysinger";
-        email = "tim@dysinger.net";
-      }];
-    };
-    # Write straight to $out in buildPhase and no-op installPhase — these
-    # derivations just stage a directory of compiler artifacts, not a
-    # build/install split.
+    nativeBuildInputs = [ fstar karamel fstar-krml fstar-checked ];
+    inherit meta;
     buildPhase = ''
-      mkdir -p $out
-      cp ${fstar-checked}/*.checked $out/ 2>/dev/null || true
-
-      for mod in ${builtins.concatStringsSep " " ordered-src-modules}; do
-        echo "=== Verifying $mod ==="
-        ${fstar-exe} ${fstar-flags} \
-          --cache_checked_modules --cache_dir $out --odir $out \
-          src/$mod.fst || exit 1
-      done
-
-      # Verify the test modules too: nix build is the whole verification gate.
-      for mod in ${builtins.concatStringsSep " " ordered-test-modules}; do
-        echo "=== Verifying $mod ==="
-        ${fstar-exe} ${fstar-flags} --include ./test \
-          --cache_checked_modules --cache_dir $out --odir $out \
-          test/$mod.fst || exit 1
-      done
-      rm -f $out/*.krml $out/*.c $out/*.h 2>/dev/null || true
-      echo "checked: $(ls $out/*.checked 2>/dev/null | wc -l) files"
+      ${make-env}
+      make check OUT="$out"
+      # Flatten $(OUT)/checked/*.checked to $out/*.checked (the old default.nix
+      # shipped a flat .checked artifact).
+      if [ -d "$out/checked" ]; then mv "$out"/checked/*.checked "$out"/ 2>/dev/null || true; rmdir "$out/checked"; fi
     '';
     installPhase = "true";
   };
 
-  krml = stdenv.mkDerivation {
+  krml = mkDerivation {
     pname = "${pname}-krml";
     version = "0.1.0";
     src = ./.;
-    nativeBuildInputs = [ fstar ];
-    meta = {
-      license = pkgs.lib.licenses.agpl3Plus;
-      maintainers = [{
-        name = "Tim Dysinger";
-        email = "tim@dysinger.net";
-      }];
-    };
+    nativeBuildInputs = [ fstar karamel fstar-krml fstar-checked ];
+    inherit meta;
     buildPhase = ''
-      mkdir -p $out
-      cp ${checked}/*.checked $out/ 2>/dev/null || true
-      cp ${fstar-checked}/*.checked $out/ 2>/dev/null || true
-
-      # Extract only the `.Low` modules (the C-extractable surface), per the
-      # multi-module library convention.  The pure spec + type modules are
-      # verified in `checked` but not extracted.
-      for mod in ${builtins.concatStringsSep " " ordered-src-modules}; do
-        case "$mod" in
-          *.Low)
-            echo "=== Extracting $mod ==="
-            ${fstar-exe} ${fstar-flags} \
-              --cache_checked_modules --cache_dir $out \
-              --odir $out --codegen krml \
-              --extract_module $mod \
-              src/$mod.fst || exit 1
-            ;;
-          *) ;;
-        esac
-      done
-      rm -f $out/*.checked $out/*.c $out/*.h $out/*.exe 2>/dev/null || true
-      echo "krml: $(ls $out/*.krml 2>/dev/null | wc -l) files"
+      ${make-env}
+      make krml OUT="$out"
+      # Flatten $(OUT)/krml/*.krml to $out/*.krml; drop the intermediate
+      # $(OUT)/checked/.
+      if [ -d "$out/krml" ]; then mv "$out"/krml/*.krml "$out"/ 2>/dev/null || true; rmdir "$out/krml"; fi
+      rm -rf "$out/checked"
     '';
     installPhase = "true";
   };
