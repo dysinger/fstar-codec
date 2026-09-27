@@ -122,11 +122,17 @@
           "Data.Codec.Low"
         ];
 
+        # Test modules in DEPENDENCY ORDER (Integration opens Roundtrip).
+        ordered-test-modules = [
+          "Data.Codec.Test.Roundtrip"
+          "Data.Codec.Test.Integration"
+        ];
+
         # The package (verify + extract), in the codec/default.nix shape.
         # default.nix returns rename-agnostic { checked; krml; }; the flake
         # exposes them as packages.<pname>-checked / -krml.
         _pkg = import ./default.nix {
-          inherit pkgs pname ordered-src-modules;
+          inherit pkgs pname ordered-src-modules ordered-test-modules;
         };
 
       in

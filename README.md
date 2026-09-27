@@ -54,14 +54,11 @@ Test modules (verified, not extracted):
 nix build
 
 # Specific targets
-nix build .#fstar-codec-checked   # F* verification only
+nix build .#fstar-codec-checked   # F* verification of src/ + test/
 nix build .#fstar-codec-krml      # KaRaMeL extraction (depends on checked)
 
-# Dev loop
-nix develop
-make check    # verify src/ + test/
-make krml     # extract out/krml/*.krml
-make clean
+# Interactive check (editor LSP or single-module verify)
+nix develop   # fstar.exe --lsp + fstar.exe on PATH
 ```
 
 `nix build` (no argument) builds the default package, `fstar-codec-krml`.

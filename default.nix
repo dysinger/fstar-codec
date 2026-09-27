@@ -10,7 +10,7 @@
 # Returns { checked; krml; } — rename-agnostic keys.  The top-level flake
 # exposes them as packages.<pname>-checked / -krml.
 
-{ pkgs, pname ? "fstar-example", ordered-src-modules ? ["Data.Codec.Types" "Data.Codec" "Data.Codec.Low"] }:
+{ pkgs, pname ? "fstar-example", ordered-src-modules ? ["Data.Codec.Types" "Data.Codec" "Data.Codec.Low"], ordered-test-modules ? ["Data.Codec.Test.Roundtrip" "Data.Codec.Test.Integration"] }:
 
 let
   inherit (pkgs) stdenv fstar karamel fstar-checked;
@@ -47,6 +47,14 @@ let
         ${fstar-exe} ${fstar-flags} \
           --cache_checked_modules --cache_dir $out --odir $out \
           src/$mod.fst || exit 1
+      done
+
+      # Verify the test modules too: nix build is the whole verification gate.
+      for mod in ${builtins.concatStringsSep " " ordered-test-modules}; do
+        echo "=== Verifying $mod ==="
+        ${fstar-exe} ${fstar-flags} --include ./test \
+          --cache_checked_modules --cache_dir $out --odir $out \
+          test/$mod.fst || exit 1
       done
       rm -f $out/*.krml $out/*.c $out/*.h 2>/dev/null || true
       echo "checked: $(ls $out/*.checked 2>/dev/null | wc -l) files"
