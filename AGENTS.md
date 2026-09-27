@@ -84,6 +84,67 @@ KaRaMeL `Stack`+`LowStar.Buffer` style to **Pulse** so it can extract via
 Custard (`--custard_backend C`).  This IS the next session's primary task.
 The pure spec (`Data.Codec.Types` / `Data.Codec`) stays exactly as-is.
 
+### Pulse idiom — PINNED by the spike (`spike/Data.Codec.Spike.fst`)
+
+The throwaway module `spike/Data.Codec.Spike.fst` (gitignored) ports
+`encode_token`/`decode_token` to Pulse, verifies 0-admit, AND extracts to
+warning-free C11 via Custard.  It records the exact idiom to replicate:
+
+- **Module header**: `#lang-pulse`, then
+  `open Pulse`, `module US = FStar.SizeT`, `module U8 = FStar.UInt8`,
+  `module U32 = FStar.UInt32`, `module A = Pulse.Lib.Array`,
+  `open FStar.Int.Cast`.
+- **Buffer type**: `A.array U8.t` (NOT `Vec` — `Array` is simpler; both take
+  `SizeT.t` indices).  The heap view is `A.pts_to b s` where `s : Seq.seq U8.t`
+  (erased).  `A.pts_to_len b` recovers `A.length b == Seq.length s`.
+- **Read/write**: `b.(j) <- x` (write) / `let x = b.(j)` (read), where `j :
+  SizeT.t`.  **Index conversion**: `US.uint32_to_sizet i` for a `U32.t` offset.
+- **Public API stays `U32.t`** — offsets/`pos`/`n`/`value` keep `U32.t`
+  (matching the pure spec + OCaml extraction); only the buffer read/write
+  boundary does `uint32_to_sizet`.
+- **Bounds must live in the TYPES (refinements), not `pure` preconditions.**
+  A `pure (...)` fact in `requires` is NOT available while typechecking the
+  `ensures` clause or a body/`Seq.index` term.  For a self-contained `ensures`
+  referencing `Seq.slice`/`Seq.index`, use `A.length b` (a pure `Ghost nat`,
+  always in scope) for bounds, and re-assert `A.length b == Seq.length s` in
+  the `pure`.  See `Pulse.Lib.Array.PtsToRange.pts_to_range_index` for the
+  canonical pattern (bounds on `Ghost.erased nat` implicit args).
+- **Never use `U32.v` / `U8.v` / `%` on `nat` in extracted bodies.**
+  `Prims.int` has no C representation (Error 368).  Use `FStar.Int.Cast`
+  narrow/wide casts: `uint32_to_uint8`, `uint8_to_uint32` (the old KrmlBasic
+  test's idiom).  `U32.v` is fine in specs/`pure` (erased).
+- **`U32.add i n` needs an overflow precondition** `U32.v i + U32.v n <
+  4294967296` in `requires` (the old `lemma_u32_add_no_overflow`).
+- **`decode_result_c` is a tagged union → clean C.**  Verified: emits an
+  if/else chain + `union { struct {...} Dr_ok; uint32_t Dr_eof; }`, no
+  struct-return trap.
+
+### Build/dev-loop invocation for the spike (replicate for the leaf)
+
+```bash
+nix develop -c bash -c '
+ULIB=$(fstar.exe --locate_lib)
+fstar.exe --include ./src \
+  --cache_checked_modules --cache_dir spike/cache --odir spike/out \
+  --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
+  spike/Data.Codec.Spike.fst
+# extract (library mode — no main):
+fstar.exe --include ./src \
+  --cache_checked_modules --cache_dir spike/cache \
+  --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
+  --codegen Custard --custard_backend C --custard_monomorphize_types true \
+  --custard_entry_module Data.Codec.Spike --odir spike/c_out \
+  spike/Data.Codec.Spike.fst
+cc -c -Wall -Wextra -Werror -std=c11 spike/c_out/Custard.c -I spike/c_out -o spike/c_out/Custard.o
+'
+```
+
+Notes: the installed F\* ships Pulse in its default lib path (no `--include`
+needed for Pulse itself); `--already_cached` skips re-verifying the Pulse
+stdlib.  `Data.Codec.Types` must be verified into `spike/cache` FIRST
+(dependency order) or Error 317/247 fires.  `--custard_entry_module` (not
+`--custard_main`) is the library-mode root.
+
 ### Key facts for the port
 
 - Custard's buffer rules (`src/custard/FStarC.Custard.Builtins.fst`

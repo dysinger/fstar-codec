@@ -9,40 +9,39 @@ Custard (`--custard_backend C`), restoring the `native` target.
 
 ## Phase 1 — Spike the Pulse idiom (de-risk before the full port)
 
-- [ ] **T1.1 — Minimal Pulse leaf.**  Create a throwaway module (not wired
-      into the build) that ports the *simplest* leaf — `encode_token` /
-      `decode_token` — to Pulse: `fn encode_token (v: U32.t) (b: vec U8.t)
-      (i: U32.t)` with a separation-logic pre/post replacing the `Stack`
-      `requires`/`ensures`+`modifies`.
-- [ ] **T1.2 — Extract it via Custard.**  Run
-      `fstar.exe --codegen Custard --custard_backend C
-      --custard_monomorphize_types true --custard_entry_module <m>` and confirm
-      C11 output compiles with `cc` and no karamel headers.
-- [ ] **T1.3 — Pin the idiom.**  Record the exact `open` set, the buffer
-      primitive (Vec vs Array), and the separation-logic shorthand that
-      compiles + verifies, in `AGENTS.md` so the remaining 7 leaves copy it.
+- [x] **T1.1 — Minimal Pulse leaf.**  Done: `spike/Data.Codec.Spike.fst` ports
+      `encode_token` / `decode_token` to Pulse (`fn`, `A.array U8.t`,
+      `pts_to`, `b.(j) <- x`).  Verifies 0-admit.
+- [x] **T1.2 — Extract it via Custard.**  Done: `--custard_backend C
+      --custard_monomorphize_types true --custard_entry_module Data.Codec.Spike`
+      emits warning-free C11 (`cc -Wall -Wextra -Werror` clean), no karamel.
+- [x] **T1.3 — Pin the idiom.**  Recorded in `AGENTS.md` (§ "Pulse idiom —
+      PINNED by the spike").  Key findings: types carry bounds (not `pure`
+      preconds); `FStar.Int.Cast` for `U8↔U32` (no `U32.v` in bodies);
+      `uint32_to_sizet` at the read/write boundary; `A.length b` for
+      self-contained ensures bounds.
 
 ## Phase 2 — Full leaf port
 
-- [ ] **T2.1 — Types.**  Carry over `codec_t`, `error_code_c`,
-      `decode_error_c`, `decode_result_ok`, `decode_result_c` unchanged (they
-      are plain F\* data types, no `Stack`/`LowStar.Buffer`).
-- [ ] **T2.2 — Encoders.**  Port `encode_token`, `encode_byteval`,
-      `encode_uint8`, `encode_word16be/le`, `encode_word32be/le`,
-      `encode_varint` (8 total) to Pulse `fn`.
-- [ ] **T2.3 — Decoders.**  Port `decode_token`, `decode_byteval`,
-      `decode_uint8`, `decode_word16be/le`, `decode_word32be/le`,
-      `decode_varint` (8 total) to Pulse `fn`, returning `decode_result_c`.
-- [ ] **T2.4 — Dispatch.**  Port `encode_bytes` / `decode_bytes` (the
-      `match c with ...` dispatchers) to Pulse.
-- [ ] **T2.5 — Ghost spec + constants.**  Re-express `varint_encode_pred`,
-      `varint_decode_expected`, and the arithmetic lemmas as ghost/Pure code
-      (they are already `noextract`/`Ghost`; only the buffer-reading bodies
-      change to Pulse's view of the buffer).
-- [ ] **T2.6 — Roundtrip lemmas.**  Port the `lemma_low_roundtrip_*` and
-      `lemma_low_encode_decode_match` proofs to Pulse's separation-logic
-      framing (the hard part — these currently thread `h_mid` heaps via
-      `FStar.HyperStack.ST.get ()`).
+- [x] **T2.1 — Types.**  Done: `codec_t`, `error_code_c`, `decode_error_c`,
+      `decode_result_ok`, `decode_result_c` carried over unchanged (plain F\*),
+      extracted as clean C tagged unions.
+- [x] **T2.2 — Encoders.**  Done: all 8 (`encode_token/byteval/uint8`,
+      `word16be/le`, `word32be/le`, `varint`) ported to Pulse `fn`, verified,
+      C-extracted.  `word32be/le` use `U32.div` (not shift) to match the pure
+      `*.enc` division structure.
+- [x] **T2.3 — Decoders.**  Done: all 8 ported to Pulse `fn` returning
+      `decode_result_c`, verified, C-extracted (`varint` uses machine ints only).
+- [x] **T2.4 — Dispatch.**  Done: `encode_bytes` / `decode_bytes` match-dispatch
+      with full per-constructor post-conditions, verified, extracted.
+- [x] **T2.5 — Ghost spec + constants.**  Done: `varint_encode_pred` and
+      `varint_decode_expected` are `noextract` pure specs (skipped by Custard).
+- [x] **T2.6 — Roundtrip lemmas.**  Done: `lemma_low_roundtrip_{token,
+      byteval,uint8,word16be,word16le,word32be,word32le,varint}` + `lemma_low_
+      encode_decode_match` ported to Pulse `fn` and verified.  Much easier than
+      feared: the pure `codec` `.enc`/`.dec` are record projections that
+      compute, so `dec (enc x)` reduces and SMT discharges the roundtrip
+      without the old `lemma_word32_shift_bytes` / `h_mid` heap threading.
 
 ## Phase 3 — Restore the build + tests
 

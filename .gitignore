@@ -8,6 +8,9 @@ result-*
 # Makefile build output (check/krml/demo all write under out/)
 out/
 
+# Throwaway Pulse-port spike scratch dir (see AGENTS.md § Pulse-port spike)
+spike/
+
 # KaRaMeL wasm output dir (flake.nix `hello-wasm` uses `-tmpdir wasm-out`)
 wasm-out/
 
