@@ -2,8 +2,7 @@
 
 A formally verified, bidirectional serialization framework in
 [F\*](https://www.fstar-lang.org/).  **Nineteen combinators, zero admits,
-every proof mechanically checked** — and the Low\* leaf codecs extract to C via
-[KaRaMeL](https://fstarlang.github.io/karamel/).
+every proof mechanically checked.**
 
 ## What it is
 
@@ -59,7 +58,7 @@ compile to C for use at the byte-buffer level.
 - **Proven roundtrips.**  Every combinator carries a lemma; no `admit`, no
   `assume`, no `admit_smt_queries`.
 - **C extraction.**  The Low\* leaf codecs extract to C with byte-level
-  post-conditions.
+  post-conditions (currently being re-targeted from KaRaMeL Low\* to Pulse).
 - **A real test suite.**  120 roundtrip and error-path tests, all verified.
 
 ## Modules
@@ -68,7 +67,7 @@ compile to C for use at the byte-buffer level.
 |--------|------|
 | `Data.Codec.Types` | The `codec a` record, the base combinators, their lemmas. |
 | `Data.Codec` | Derived combinators, operator aliases, character predicates. |
-| `Data.Codec.Low` | C-extractable Low\* leaf codecs (8 types), buffer I/O. |
+| `Data.Codec.Low` | C-extractable leaf codecs (8 types), buffer I/O. *(pending Pulse port)* |
 
 Test modules (verified, not extracted):
 
@@ -80,41 +79,41 @@ Test modules (verified, not extracted):
 ## Getting started
 
 ```bash
-# Build: verify src/ + test/, then extract the .Low module to KaRaMeL IR.
+# Build: verify the pure spec modules (the 0-admit gate).
 nix build
 
 # Individual targets
-nix build .#fstar-codec-checked   # F* verification of src/ + test/
-nix build .#fstar-codec-krml      # KaRaMeL extraction (depends on checked)
+nix build .#fstar-codec-checked   # F* verification (Data.Codec.Types + Data.Codec)
+nix build .#fstar-codec-ocaml     # OCaml package of the pure spec
 
-# Dev loop (no nix): verify + extract via the Makefile
-nix develop && make check && make krml
+# Dev loop (no nix): verify via the Makefile
+nix develop && make check
 ```
 
-`nix build` with no argument builds the default package, `fstar-codec-krml`.
-The authoritative verification gate is `nix build .#fstar-codec-checked`; the
-LSP is a dev-loop aid, not a substitute.
+`nix build` with no argument builds the default package,
+`fstar-codec-checked`.  The authoritative verification gate is
+`nix build .#fstar-codec-checked`; the LSP is a dev-loop aid, not a substitute.
 
-The build is three layers, one per environment:
+The build is two layers:
 
 | File | Responsibility | Works without flakes? |
 |------|----------------|-----------------------|
 | `flake.nix` | inputs/outputs + `devShell` only | no (needs flakes) |
-| `default.nix` | builds the targets (`checked` / `krml`) | yes (`nix-build` / `import`) |
-| `Makefile` | the shell-script build (module order) | yes (plain `fstar`/`karamel` on PATH) |
+| `default.nix` | builds `check` / `ocaml` | yes (`nix-build` / `import`) |
+| `Makefile` | the shell-script verify (module order) | yes (plain `fstar` on PATH) |
 
-The nixpkgs overlay (in `flake.nix`) builds `fstar`, `karamel`,
-`fstar-checked`, and `fstar-krml` from the pinned forks; the flake passes them
-to `default.nix` by named argument.  `default.nix` delegates verification and
-extraction to the `Makefile` (`make check` / `make krml`), which owns the
-module list and its dependency order.
+Toolchain: F\* `v2026.09.20+lsp` (a fork pin carrying the LSP server).  The
+former KaRaMeL/`.krml`/`rust`/`wasm` targets were removed; the only C backend
+in the new F\* is Custard (`--codegen Custard --custard_backend C`), which
+extracts Pulse rather than KaRaMeL Low\*.  The `Data.Codec.Low` leaf awaits a
+Pulse rewrite.
 
 ## Architecture
 
 ```
 Data.Codec.Types     — codec record, 19 base combinators, all lemmas
-Data.Codec.Low       — C-extractable leaf codecs, buffer I/O, dispatch
 Data.Codec           — derived combinators, operator aliases, char predicates
+Data.Codec.Low       — (pending Pulse port) C-extractable leaf codecs
 ```
 
 ## License

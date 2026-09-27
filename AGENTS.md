@@ -1,178 +1,138 @@
 # fstar-codec — Agent Guide & Handoff
 
 `Data.Codec` — verified bidirectional codec library, extracted from the xeno
-monorepo (`codec/`) as a standalone repo.  F* source is 0-admit; `checked` and
-`krml` (`.krml` IR) extend GREEN.  This file records the session state and the
-unfinished backend-extraction work so the next session resumes cleanly.
+monorepo (`codec/`) as a standalone repo.  F* source is 0-admit.  This file
+records session state and the unfinished Pulse-port work so the next session
+resumes cleanly.
 
-## Current state (Sep 27 session, second pass)
+## Current state (roll-forward session)
 
-### GREEN (verified this session)
+### GREEN (verified this session, F* `v2026.09.20+lsp`)
 
-- `nix build .#fstar-codec-checked` — 0 admits (the gate; LSP is looser).
-- `nix build .#fstar-codec-krml` — extracts ONLY `Data_Codec_Low.krml`.
-- `nix build .#fstar-codec-native` — **NOW WORKS**.  Produces
-  `libfstar-codec.dylib`/`.so` + `Data_Codec_Low.h`.
-- `nix build .#fstar-codec-ocaml` — COMPILES (unchanged).
-- Three-layer build architecture landed (matches the xeno
-  `build-layer-separation` change).
+- `nix build .#fstar-codec-checked` — 0 admits.  Verifies the **pure spec**
+  modules only: `Data.Codec.Types` + `Data.Codec`.
+- `nix build .#fstar-codec-ocaml` — compiles the pure spec to an OCaml
+  findlib package (`fstar_codec`), linking against `fstar.lib`.
 
-### ROOT CAUSE FIXED (source surgery, 0-admit preserved)
+### The old KaRaMeL/Low\* layer is DEAD
 
-The `FStar.List` reachability blamed in the previous handoff on
-`open Data.Codec.Types` was actually two **top-level spec helpers** in
-`Data.Codec.Low` itself — `open`'s spec symbols are erased, but these two
-were being extracted:
+F* `v2026.09.20` **removed the entire Low\*/KaRaMeL stdlib**: the namespaces
+`FStar.HyperStack`, `FStar.HyperStack.ST`, and `LowStar.Buffer` no longer
+exist.  Consequently:
 
-- `varint_encode_pred : prop` — a pure predicate used only in `ensures`.
-  FIXED with the bare `noextract` keyword on its own line before `let`.
-  (`[@ noextract]` / `[@@ noextract]` are SYNTAX ERRORS in F* 2025.10.x.)
-- `varint_decode_expected : Pure decode_result_c` — a pure spec helper, only
-  consumed by `decode_varint`'s `ensures` + `Lemma` bodies.  FIXED by changing
-  the effect `Pure` → `Ghost` (which prunes it from the `.krml`; `Pure` does
-  not).
+- `src/Data.Codec.Low.fst` (the KaRaMeL `Stack`+`LowStar.Buffer` leaf) **cannot
+  typecheck** against the new F\*.  It is still in the tree but not built.
+- `test/Data.Codec.Test.{Roundtrip,Integration}.fst` both `open Data.Codec.Low`
+  and are likewise not built.
 
-`strings Data_Codec_Low.krml | grep -cE 'varint_encode_pred|varint_decode_expected'`
-now returns 0, and the generated C has ZERO `Prims_list`/`FStar_List`/`.tail`/
-`.hd`/`TODO`/`PDeref` references.
+The `krml` / `native` / `rust` / `wasm` targets were deleted along with the
+KaRaMeL toolchain.  The only C-extraction path in the new F\* is **Custard**
+(`--codegen Custard --custard_backend C`), and Custard extracts **Pulse**
+(`fn`, `Pulse.Lib.Reference`/`Vec`/`Array`), not the old Low\* style.
 
-### NOT done — `rust` and `wasm` are BLOCKED BY KaRaMeL backend defects
+## Roll-forward drift fixes (already landed, 0-admit preserved)
 
-The root-cause fix unblocked `native`/C fully, and cleared the list error that
-was masking two DEEPER KaRaMeL toolchain limitations (verified against the
-KaRaMeL source in `../karamel/`):
+`src/Data.Codec.Types.fst` needed three upstream removals:
 
-- **wasm** — `AstToCFlat.ml` `size_of` maps a wasm value to a SINGLE
-  `I32`/`I64`.  `decode_result_c` (a `DR_Inl of {code;pos} | DR_Inr of
-  {n;value}` variant, 20 bytes/2 fields) is a flat struct and is UNRETURNABLE
-  from a wasm function.  `-fnostruct-passing` and `-by-ref` do NOT fix it.
-  The wasm backend has no multi-value struct returns.
-- **rust** — `PrintMiniRust.ml:172` maps `Constant.CInt` (`krml_checked_int_t`,
-  the mathematical-int type from `U32.v`/`U8.v`/`%`/`/`) to an EMPTY string, so
-  `decode_varint`/`encode_varint` emit the invalid `let b4_val:  = …`.
-  Additionally `-minimal` emits `crate::fstar`/`crate::prims`/
-  `crate::lowstar::ignore` refs but KaRaMeL ships NO Rust runtime crate (unlike
-  the C `libkrmllib.a`).
+1. `open FStar.Mul` removed (module deleted; `*` is now natively multiplication).
+2. `Prims.op_Multiply a 10` → `a * 10` (6 sites; `op_Multiply` deleted from `Prims`).
+3. `--split_queries always` removed from two `#push-options` (option deleted;
+   F* now emits one SMT query per proof obligation).
 
-Both are real Low\* usage (mathematical ints + struct-returning decode API),
-which the trivial template `Example.fst` never hits.  Detailed investigation +
-fix recipes are recorded in the fstar-lowstar skill §15
-(`~/.pi/agent/skills/fstar/fstar-lowstar/SKILL.md`).
+`default.nix` `ocaml` backend needed two fixes:
 
-**Next-session decision (needs OpenSpec gate — Mandate 15):** `rust`/`wasm`
-require EITHER a KaRaMeL patch (`Constant.CInt -> "i64"` etc. + a Rust runtime
-crate), OR an API refactor of `Data.Codec.Low`'s decode functions to return a
-`U32.t` status and write `n`/`value`/`code`/`pos` via out-parameter pointers
-(the classic C ABI, wasm-friendly).  Neither is ad-hoc source surgery.
+4. `--codegen OCaml` now requires **one source file per invocation** (Error 10).
+5. OCaml extraction needs the dependencies' `.checked` files loaded — the
+   `ocaml-src` derivation now verifies in dependency order (`--cache_checked_modules
+   --cache_dir cache`) then extracts with `--include cache`.
 
-## The `ocaml` target works (reference pattern)
+flake.nix wiring (mirrors upstream `../fstar/flake.nix`):
 
-`fstar.exe --codegen OCaml` emits underscored module files
-(`Data_Codec_Types.ml`, `Data_Codec.ml` — dots become underscores).  The dune
-`(modules ...)` stanza MUST use the underscored names, and the compiled OCaml
-links against the fstar fork's shipped runtime `fstar.lib`
-(`OCAMLPATH = "${fstar}/lib"`).  This already compiles to `.cmxa`.
+- `ocamlPackages = ocaml-ng.ocamlPackages_5_3` (5.3, NOT 5.4 — `v2026.09.20`
+  uses 5.3; 5.4 was only the fork's `t/ocaml-5.4` TopGit branch).
+- `karamel` is **fully removed** — it is an in-tree git submodule of F\* that
+  `.nix/fstar.nix` synthesizes only to install the `krml` binary + headers,
+  which we do not consume.  The flake passes `karamel-src = emptyDirectory`
+  + `karamelOcamlDeps = []` and sets `FSTAR_USE_KRML_EXE=1` with a no-op
+  `karamel/Makefile` stub so the unconditional `make -C karamel install` is
+  a NOP.  The installed F\* now ships only `fstar.exe` (no krml).
+- The `fstar` derivation is overridden with
+  `buildPhase = make OTHERFLAGS='--z3rlimit 20 --retry 3'` — the default
+  rlimit (5) makes the 4-stage bootstrap's `FStar.Math.Fermat.binomial_theorem`
+  deterministically time out (Error 19) under z3 4.13.3.  `OTHERFLAGS` flows
+  into the nested `make -f mk/lib.mk` (the `.alib2.src.touch` recipe does not
+  re-specify it, unlike `fsharp-lib.src`).
 
-## The native/rust/wasm failures (root-caused, not yet fixed)
+## Backend matrix (post roll-forward)
 
-Both failures share ONE root cause:
+| Backend | Mechanism | Status |
+|---|---|---|---|
+| `ocaml` | `--codegen OCaml` (legacy ML) | ✅ GREEN now (pure spec; no Pulse needed) |
+| `native` (C) | `--custard_backend C` (direct C11, no karamel) | 🟡 needs the Pulse leaf |
+| `fsharp` | `--codegen FSharp` / `--custard_backend FSharp` | 🟡 same Pulse prerequisite (`.NET 10` SDK) |
+| `rust` | `--custard_backend KrmlRust` → karamel | ❌ dead upstream (431 rustc errors, no `lowstar` module) |
+| `wasm` | — | ❌ gone — no wasm backend in the new F\* |
 
-**`Data.Codec.Low` (src/Data.Codec.Low.fst:55) does `open Data.Codec.Types`.**
-That `open` drags the pure, `list`-heavy `codec a` combinator layer
-(`Data.Codec.Types` uses `FStar.List.Tot` everywhere: `list byte`,
-`List.Tot.map`, `for_all`, `seq_of_list`, etc.) into the KaRaMeL extraction
-closure.  The KaRaMeL rust/wasm backends cannot translate
-`FStar.List.Tot.Base.hd` / `.tail` (structural list deconstruction →
-`TODO: PDeref`), and emit `Fatal error: Unrecoverable error`.
+Custard's `--custard_backend` enum is exactly `["OCaml"; "FSharp"; "KrmlC";
+"KrmlRust"; "C"]`.  There is no wasm anywhere.  `native` and `fsharp` both
+land once the leaf is Pulse; `rust`/`wasm` are dropped permanently.
 
-`Data.Codec.Low` only actually needs from `Data.Codec.Types`:
-- `byte`  = `U8.t`  (trivial type alias, Types:55)
-- `byte_seq` = `Seq.seq byte`  (trivial alias, Types:58)
-- `byte_val` (Types:940) — used ONLY in the ghost `ensures`/lemma spec portions
-  of `encode_bytes`/`decode_bytes`, never in extractable code.
+## Next step — AGENDA: rewrite `Data.Codec.Low` in Pulse
 
-Specific failures observed:
-- **native** — after adding `-warn-error -2 -9-16 -11 -26..28`, KaRaMeL emits C
-  successfully (`Data_Codec_Low.c` + krmllib `C.*`) but the C link fails with
-  `Prims_op_LessThan` / `Prims_op_Modulus` / etc. `undefined symbols` — the
-  `libkrmllib.a` link step was added
-  (`${karamel.home}/krmllib/dist/generic/libkrmllib.a`) but the `-drop`
-  experiment below broke the extraction before reaching link.
-- **rust** — `FStar.List.Tot.Base.hd__uint8_t ... TODO: PDeref` →
-  `Fatal Not_found`.
-- **wasm** — `FStar.List.Tot.Base.tail__uint8_t partially applied function` →
-  `Unrecoverable error`.
+The single C leaf (`Data.Codec.Low`, ~1100 lines) must be rewritten from the
+KaRaMeL `Stack`+`LowStar.Buffer` style to **Pulse** so it can extract via
+Custard (`--custard_backend C`).  This IS the next session's primary task.
+The pure spec (`Data.Codec.Types` / `Data.Codec`) stays exactly as-is.
 
-## Next steps (in order)
+### Key facts for the port
 
-1. **Re-scope via OpenSpec.**  This backend-extraction work is NOT yet an
-   OpenSpec change.  Create one in the xeno monorepo (or a new `openspec/` here)
-   titled e.g. `codec-native-rust-wasm` — it is F* source surgery + KaRaMeL
-   tuning, so it needs proposal/design/tasks + the re-verify gate (Mandate 15).
+- Custard's buffer rules (`src/custard/FStarC.Custard.Builtins.fst`
+  `pulse_rule`) cover ONLY `Pulse.Lib.Reference`, `Pulse.Lib.Vec`,
+  `Pulse.Lib.Array.Core`, `Pulse.Lib.Box`, `Pulse.Lib.ArrayPtr`.  There is no
+  `LowStar.Buffer` rule.
+- Custard requires `--custard_monomorphize_types true` for the C backend (no
+  type variables in C).
+- `decode_result_c` (a tagged union) returns fine from Custard-C (unlike the
+  old KaRaMeL wasm backend) — the C backend emits an if/else chain, not a
+  struct-return trap.
+- The Kaplan reference: `../fstar/doc/ref/custard.md` §7.4 (Pulse → IR rule
+  table), §3.1 (monomorphization), §16 (test matrix), §4.4 (entry points).
+- Pulse examples to crib from: `../fstar/pulse/lib/pulse/lib/Pulse.Lib.Array.Core.fst`
+  and the Custard C regression `tests/custard/KrmlBasic.fst` (records, variants,
+  machine integers).
 
-2. **Narrow `open Data.Codec.Types` in `Data.Codec.Low`.**  Replace the `open`
-   with local `byte`/`byte_seq` aliases and qualify (or inline) the ghost-
-   spec `byte_val` usage.  This removes the `FStar.List` reachability that
-   breaks rust/wasm.  **This is the real fix** — everything else is
-   downstream of it.
+### Port plan (in dependency order)
 
-3. **Re-verify 0-admit.**  `Data.Codec.Low` must still verify with zero admits
-   after the narrowing (`nix build .#fstar-codec-checked` is the gate; LSP is
-   looser).
+1. **Map the API surface.**  The 8 leaf encoders/decoders + `encode_bytes`/
+   `decode_bytes` + the `codec_t`/`decode_result_c` types all carry over.  The
+   `Stack` effect becomes Pulse `fn`; `LB.buffer U8.t` becomes a `Pulse.Lib.Vec.vec
+   U8.t` (or `Array` for stack-allocated); `LB.upd`/`LB.index` become
+   `Pulse.Lib.Vec`'s read/write; `modifies (LB.loc_buffer b)` / `h0 == h1` become
+   Pulse separation-logic pre/post.
+2. **Start with the simplest leaf** (`encode_token` / `decode_token`) as a
+   spike to pin the correct Pulse idiom, then replicate across the other 7.
+3. **`decode_result_c` is a plain tagged union → fine for C.**  No out-param
+   refactor needed (that was the OLD wasm limitation; Custard-C has no such
+   constraint).
+4. **Re-verify 0-admit** — `nix build .#fstar-codec-checked` after re-adding
+   the leaf + its two test modules to `SRC_MODS`/`TST_MODS`.  The two test
+   modules will also need their `Low` references updated to the Pulse surface.
+5. **Wire the `native` target** — `fstar.exe --codegen Custard --custard_backend C
+   --custard_monomorphize_types true --custard_entry_module Data.Codec.Low`
+   (whole-program from an entry; a library has no `main`, so use
+   `--custard_entry_module`, not `--custard_main`).
+6. **Optionally land `fsharp`** (`.NET 10` SDK + `--custard_backend FSharp`).
 
-4. **Then fix the backends with the known-good KaRaMeL flags** (from
-   `tls/Makefile` in the monorepo — the canonical reference):
-   - `-warn-error -2 -warn-error -9-16 -warn-error -11 -warn-error -26..28`
-   - `-no-prefix 'Data.Codec.*'`
-   - native link: compile all emitted `.c` to `.o`, link
-     `${karamel.home}/krmllib/dist/generic/libkrmllib.a` (for `Prims_*` symbols).
+### Definition of done
 
-## Things to try next session (if step 2 alone doesn't clear rust/wasm)
-
-- **`-drop` uses `.krml` basenames (underscored), one per arg or comma-
-  separated** — NOT dotted module names, NOT space-joined.  Earlier `-drop
-  Data_Codec_Types Data_Codec ...` failed with "Unknown file extension for
-  Data_Codec" because space-joining was mis-parsed.  Correct form is
-  `-drop Data_Codec_Types,Data_Codec,FStar_List_Tot_Base,FStar_List_Tot` (or
-  one `-drop` per name).
-- **Do not pass all 3515 `${fstar-krml}/krml/*.krml`** into the rust/wasm
-  backends — that bundle includes `FStar_List_Tot_Base.krml` and forces the
-  list reachability.  Pass only the runtime `.krml` `Data.Codec.Low` actually
-  references (`FStar_UInt8`, `FStar_UInt32`, `FStar_Seq_Base`, `Prims`,
-  `LowStar_Buffer`, `FStar_HyperStack`, `C_*`, `Lib_*`).
-- **`-bundle 'Data.Codec.Low=FStar.List.Tot.Base,FStar.List.Tot'`** (API/impl
-  split) as an alternative reachability-scoping to `-drop`, per
-  fstar-lowstar §12.
-- **`-add-include '"krml/internal/compat.h"'`** for the Warning 15 non-Low\*
-  math (`Prims.op_LessThan`, etc.) if the C link still reports them unresolved
-  after `libkrmllib.a` is linked.
-
-## Key facts (do not re-derive)
-
-- `Data_Codec_Low.krml` itself has ZERO `FStar.List` references — the list
-  reachability comes ONLY from `open Data.Codec.Types` in the `.fst` source,
-  not from the `.Low` body.
-- The fstar fork already ships the full OCaml runtime (`lib/fstar/lib/` =
-  `fstar.lib`, `fStar_UInt8.cmx`, `fStar_List_Tot_Base.cmx`, ...).  The xeno
-  monorepo's repo-local `ulib/` (hand-written `.ml` stubs) is a REDUNDANT
-  vendored duplicate — do not cargo-cult it into this repo.  Link against
-  `fstar.lib` via `OCAMLPATH = "${fstar}/lib"` (already done for `ocaml`).
-- `nix/karamel-*.patch` in xeno patch KaRaMeL's OCaml source (`lib/Ast.ml`,
-  `lib/Checker.ml`, `lib/Simplify.ml`), NOT F*'s ulib, and appear UNAPPLIED by
-  xeno's nix build.  They do not belong here; do not copy them.
-- The template's example works for native/wasm/rust because `Example.fst` uses
-  no `uint_to_t`/`U32.v`/list ops — do NOT copy the template's bare
-  `native`/`wasm`/`rust` derivation verbatim onto a real Low* module; they need
-  the krmllib link + warn-erorr flags.
+`nix build .#fstar-codec-checked` (0-admit, spec + leaf + tests) and
+`nix build .#fstar-codec-native` (C11 shared object from Custard, no karamel)
+GREEN.
 
 ## Build commands
 
 ```bash
-nix build .#fstar-codec-checked   # verification gate (0-admit)
-nix build .#fstar-codec-krml      # extract Data_Codec_Low.krml
-nix build .#fstar-codec-ocaml     # WORKS
-nix build .#fstar-codec-native    # BROKEN (unfinished)
-nix build .#fstar-codec-rust      # BROKEN (unfinished)
-nix build .#fstar-codec-wasm      # BROKEN (unfinished)
-nix develop && make check && make krml   # dev loop (no nix)
+nix build .#fstar-codec-checked   # verification gate (0-admit, pure spec only)
+nix build .#fstar-codec-ocaml     # OCaml package of the pure spec
+nix develop && make check         # dev loop (no nix)
 ```

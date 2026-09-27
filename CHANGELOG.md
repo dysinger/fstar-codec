@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Rolled F\* forward to `v2026.09.20+lsp` (first stable tag shipping the
+  Custard extractor).
+- Removed the KaRaMeL/Low\* toolchain and all its targets (`krml`, `native`,
+  `rust`, `wasm`) — F\* `v2026.09.20` deleted the `FStar.HyperStack` /
+  `LowStar.Buffer` stdlib, so the `.Low` leaf cannot typecheck anymore.
+- `checked` now verifies the pure spec (`Data.Codec.Types` + `Data.Codec`);
+  `ocaml` packages only the pure spec.  `Data.Codec.Low` + its two test
+  modules are out of the build pending a Pulse port.
+
+### Source drift fixes
+
+- Removed `open FStar.Mul` and `Prims.op_Multiply` (both deleted upstream).
+- Removed `--split_queries always` from `#push-options` (option deleted).
+
 ## [0.1.0] — initial extraction
 
 ### Added

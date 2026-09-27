@@ -42,7 +42,6 @@ open FStar.Seq.Properties
 open FStar.UInt8
 open FStar.UInt32
 open FStar.List.Tot
-open FStar.Mul
 open FStar.Math.Lemmas
 
 module Seq = FStar.Seq
@@ -221,7 +220,7 @@ let rec acc_digits (ds: list byte) (a: int) : Tot int (decreases ds) =
   match ds with
   | [] -> a
   | d :: tl ->
-    if is_digit d then acc_digits tl (Prims.op_Multiply a 10 + (U8.v d - 0x30))
+    if is_digit d then acc_digits tl (a * 10 + (U8.v d - 0x30))
     else acc_digits tl a
 
 (** True if every byte in the list is a digit. *)
@@ -238,7 +237,7 @@ let rec digits_to_int_decode_go (f: int -> bool) (s: byte_seq) (k: nat) (a: int)
     if f a then Inr (a, i) else Inl (mk_decode_error ExpectedPredicate i)
   else let b = U8.v (Seq.index s i) in
     if 0x30 <= b && b <= 0x39 then
-      digits_to_int_decode_go f s (k-1) (Prims.op_Multiply a 10 + (b - 0x30)) (i+1)
+      digits_to_int_decode_go f s (k-1) (a * 10 + (b - 0x30)) (i+1)
     else if i = 0 then Inl (mk_decode_error ExpectedPredicate 0)
     else if f a then Inr (a, i)
     else Inl (mk_decode_error ExpectedPredicate i)
@@ -333,7 +332,7 @@ let rec lemma_seq_of_list_length (l: list byte) : Lemma
     explicitly (precedent: [Network.IPv6.lemma_seq_to_list_of_list_append],
     0-admit, --z3rlimit 2000).  It is the bridge a [seq_to_list]-at-the-boundary
     decoder needs for a GENERAL-\ suffix roundtrip. *)
-#push-options "--z3rlimit 2000 --split_queries always"
+#push-options "--z3rlimit 2000"
 let rec lemma_seq_to_list_of_list_append (l: list byte) (s: byte_seq) : Lemma
   (ensures Seq.seq_to_list (seq_of_list l `Seq.append` s) == l @ Seq.seq_to_list s)
   (decreases l)
@@ -593,7 +592,7 @@ let rec lemma_digits_decode_inr_len_bound (f: int -> bool) (s: byte_seq) (k: nat
       if 0x30 <= b && b <= 0x39 then begin
         assert (i + 1 <= Seq.length s);
         lemma_digits_decode_inr_len_bound f s (k-1)
-          (Prims.op_Multiply a 10 + (b - 0x30)) (i+1) v n
+          (a * 10 + (b - 0x30)) (i+1) v n
       end
       else ()
     end
@@ -613,7 +612,7 @@ let rec lemma_digits_decode_go_len_bound (f: int -> bool) (s: byte_seq) (k: nat)
       let b = U8.v (Seq.index s i) in
       if 0x30 <= b && b <= 0x39 then begin
         assert (i + 1 <= Seq.length s);
-        lemma_digits_decode_go_len_bound f s (k-1) (Prims.op_Multiply a 10 + (b - 0x30)) (i+1)
+        lemma_digits_decode_go_len_bound f s (k-1) (a * 10 + (b - 0x30)) (i+1)
       end
       else ()
     end
@@ -769,7 +768,7 @@ let rec lemma_digits_decode_shift
   = let sliced = Seq.slice s i (Seq.length s) in
     if k > 0 then begin
       let b = U8.v (Seq.index s i) in
-      let a' = Prims.op_Multiply a 10 + (b - 0x30) in
+      let a' = a * 10 + (b - 0x30) in
       let cnt1 = nat_incr i in
       if cnt1 >= Seq.length s then ()
       else if is_digit (Seq.index s cnt1) then begin
@@ -822,7 +821,7 @@ let rec lemma_digits_process_list
     | d :: tl ->
       let k' : nat = dec_nat k in
       let d_val = U8.v d - 0x30 in
-      let a' = Prims.op_Multiply a 10 + d_val in
+      let a' = a * 10 + d_val in
       let tail_input = Seq.append (seq_of_list tl) r in
       assert (digits_to_int_decode_go f s k a 0 ==
               digits_to_int_decode_go f s k' a' 1);
@@ -2598,7 +2597,7 @@ let lemma_scan_until_found_bound (delim: list byte) (bs: list byte) : Lemma
     ()
 
 (** Error-position bound for [take_until_dec]. *)
-#push-options "--z3rlimit 400 --split_queries always"
+#push-options "--z3rlimit 400"
 let lemma_take_until_dec_err_bound (delim: list byte)
   (content_ok: list byte -> Tot bool) (max: nat) (s: byte_seq) : Lemma
   (ensures (match take_until_dec delim content_ok max s with
@@ -2611,7 +2610,7 @@ let lemma_take_until_dec_err_bound (delim: list byte)
 #pop-options
 
 (** Consumed-count bound for [take_until_dec]. *)
-#push-options "--z3rlimit 400 --split_queries always"
+#push-options "--z3rlimit 400"
 let lemma_take_until_dec_consumed_bound (delim: list byte)
   (content_ok: list byte -> Tot bool) (max: nat) (s: byte_seq) : Lemma
   (ensures (match take_until_dec delim content_ok max s with

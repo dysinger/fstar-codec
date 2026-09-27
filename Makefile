@@ -1,12 +1,12 @@
 # Copyright 2026 Department of Code LLC.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-# F* dev-loop build (verify + KaRaMeL extract).
+# F* dev-loop build (verify).
 #
-# Usage: nix develop, then `make check` / `make krml`.
+# Usage: nix develop, then `make check`.
 #
-# The FSTAR_KRML / KRML_HOME / KRM_LIB / KRM_INC env vars are exported by the
-# flake devShell (see flake.nix shellHook).  Override them here if needed.
+# FSTAR_CHECKED is exported by the flake devShell (see flake.nix shellHook).
+# Override it here if needed.
 
 # ── Tools ──────────────────────────────────────────────────────────
 
@@ -17,54 +17,24 @@ OUT ?= out
 
 FSTAR ?= fstar.exe
 
-# These are supplied by the flake devShell's shellHook, which exports
-# FSTAR_KRML / FSTAR_CHECKED / KRML_HOME / KRM_LIB / KRM_INC.  Make imports
-# them from the environment as ordinary variables of the same name; passing
-# e.g. `make krml KRM_LIB=/elsewhere` on the command line simply overrides the
-# environment import.  No `?=` here (a same-name `?= $(VAR)` is a recursive
-# self-reference when the env var is missing).  The guards below make a
-# missing value fail loudly instead of silently mis-resolving.
-
-ifeq ($(FSTAR_KRML),)
-$(error FSTAR_KRML is not set; run `nix develop` (or export it yourself) before `make`)
-endif
-ifeq ($(KRML_HOME),)
-$(error KRML_HOME is not set; run `nix develop` (or export it yourself) before `make`)
-endif
-ifeq ($(KRM_LIB),)
-$(error KRM_LIB is not set; run `nix develop` (or export it yourself) before `make`)
-endif
-
 ULIB := $(shell $(FSTAR) --locate_lib 2>/dev/null || echo /none)/ulib
-KRM_LIB_DIR := $(or $(KRML_HOME)/krmllib,$(KRM_LIB))
 
 FSTAR_FLAGS = --no_default_includes \
   --include $(ULIB) \
-  --include ./src \
-  --include $(KRM_LIB_DIR) \
-  --include $(KRM_LIB_DIR)/obj
+  --include ./src
 
 # ── F* verification ───────────────────────────────────────────────
 
-# Source modules in DEPENDENCY ORDER (leaf modules first), overriding the
-# template's auto-discovered `sort` which would alphabetize Data.Codec before
-# Data.Codec.Types and trigger F* Warning 247 (a dependent module verified
-# before its leaf never writes its .checked).  Note: Data.Codec.Low depends on
-# Data.Codec.Types only (it does not open Data.Codec), so this order is a
-# valid linearization (Types -> Codec, Types -> Low), not a minimal chain.
-SRC_MODS := Data.Codec.Types Data.Codec Data.Codec.Low
+# Source modules in DEPENDENCY ORDER (leaf modules first).
+#
+# NOTE: Data.Codec.Low (the KaRaMeL Low* leaf) is excluded: F* v2026.09.20
+# removed the entire Low*/KaRaMeL stdlib (FStar.HyperStack, FStar.HyperStack.ST,
+# LowStar.Buffer), so it cannot typecheck anymore.  Porting it to Pulse is the
+# next change.  The two test modules likewise depend on Data.Codec.Low and are
+# excluded until then.
+SRC_MODS := Data.Codec.Types Data.Codec
 
-# Modules to extract to C via KaRaMeL.  A library extracts only its `.Low`
-# (C-extractable) modules.  Fail loudly if the filter ever comes up empty
-# (e.g. due to a copy-paste of the `grep '\.Low\.'` defect) rather than
-# silently producing an empty krml artifact.
-_LO_MODS := $(filter %.Low,$(SRC_MODS))
-KRML_MODS := $(if $(_LO_MODS),$(_LO_MODS),$(SRC_MODS))
-ifeq ($(KRML_MODS),)
-$(error KRML_MODS is empty; expected at least one .Low module to extract)
-endif
-
-.PHONY: check krml clean
+.PHONY: check clean
 
 # F* names its cache files `<source>.checked` (e.g. src/Data.Codec.fst ->
 # Data.Codec.fst.checked) — the module's DOTS ARE PRESERVED in the .checked
@@ -72,7 +42,8 @@ endif
 # the `check` prerequisite MUST use the raw module name, not `subst .,_`.
 # (`subst .,_` here would look for Data_Codec.fst.checked, which F* never
 # writes, leaving `make check` permanently out-of-date.)
-TST_MODS := Data.Codec.Test.Roundtrip Data.Codec.Test.Integration
+# Tests are also excluded for now (they `open Data.Codec.Low`).
+TST_MODS :=
 
 check: $(addprefix $(OUT)/checked/,$(addsuffix .fst.checked,$(SRC_MODS))) \
        $(addprefix $(OUT)/checked/,$(addsuffix .fst.checked,$(TST_MODS)))
@@ -105,19 +76,7 @@ $(OUT)/checked/%.fst.checked: test/%.fst
 	  --cache_checked_modules --cache_dir $(OUT)/checked \
 	  --odir $(OUT)/checked $<
 
-# ── KaRaMeL extraction ─────────────────────────────────────────────
-
-krml: check $(addprefix $(OUT)/krml/,$(addsuffix .krml,$(subst .,_,$(KRML_MODS))))
-
-define KRML_RULE
-$(OUT)/krml/$(subst .,_,$(1)).krml: src/$(1).fst
-	@mkdir -p $(OUT)/krml
-	$(FSTAR) $(FSTAR_FLAGS) \
-	  --cache_checked_modules --cache_dir $(OUT)/checked \
-	  --odir $(OUT)/krml --codegen krml \
-	  --extract_module $(1) $$<
-endef
-$(foreach mod,$(KRML_MODS),$(eval $(call KRML_RULE,$(mod))))
+# ── Clean ─────────────────────────────────────────────────────────────
 
 clean:
 	rm -rf $(OUT)

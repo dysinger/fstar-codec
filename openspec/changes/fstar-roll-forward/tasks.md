@@ -52,69 +52,53 @@ last tagged `v2025.12.15+lsp`); upstream `FStarLang/FStar` has none.  Rolling to
 - [ ] **T1.3 — Push the branch.**  With working credentials (HTTPS token or
       key), `git push -u origin v2026.09.20+lsp`.
 
-## Phase 2 — Point fstar-codec at the new toolchain
+## Phase 2 — Point fstar-codec at the new toolchain — DONE
 
-> **Status: user's WIP `flake.nix` is in the working tree (uncommitted).**  It
-> got the version + branch right but the karamel/OCaml wiring is incomplete.
-> Concrete corrections below are from `v2026.09.20`'s own `.nix/fstar.nix` and
-> `flake.nix`.
+> Landed this session.  karamel is **fully removed**: it is an in-tree git
+> submodule of F\* that `.nix/fstar.nix` synthesizes only to install `krml`,
+> which we don't use.  The flake passes `karamel-src = emptyDirectory` +
+> `karamelOcamlDeps = []` and neutralizes the `make -C karamel install` step
+> via `FSTAR_USE_KRML_EXE=1`.  No fork needed.
 
-- [ ] **T2.1 — flake.nix inputs.**  `fstar.url` →
-      `github:dysinger/fstar/v2026.09.20+lsp` (DONE in WIP).  **`karamel` is
-      NOT removable** — `v2026.09.20` renamed its karamel input to `karamel-src`
-      pointing at `github:FStarLang/karamel/fstar2` (not `dysinger/karamel/
-      coextract`), and `.nix/fstar.nix` needs `karamel-src` + `karamelOcamlDeps`
-      + `ocamlLibraryPath` as arguments.  Un-comment/rename the karamel input
-      accordingly.  (`dysinger/karamel/fstar2` and `FStarLang/karamel/fstar2`
-      are the same commit 79f86035 — pick the fork for consistency.)
-- [ ] **T2.2 — OCaml version: REVERT 5.4 → 5.3.**  The WIP bumped
-      `ocamlPackages_5_3` → `ocamlPackages_5_4`; that is WRONG — `v2026.09.20`
-      upstream still uses `ocamlPackages_5_3` (`flake.nix` line 26).  The 5.4
-      experiment was only on the fork's `t/ocaml-5.4` TopGit branch, not the
-      `v2026.09.20` tag.  Keep 5.3 (and keep the aarch64-darwin
-      `ocamlPackages_5_3.overrideScope` overlay + the exported `ocamlPackages =
-      ocamlPackages_5_3` consistent — the WIP still exports 5_3 while using
-      5_4 elsewhere).
-- [ ] **T2.3 — Rewrite the overlay's `fstar` call.**  The current overlay calls
-      `ocamlPackages.callPackage (inputs.fstar + "/.nix/fstar.nix") { version;
-      inherit z3; }` — but the `v2026.09.20` `fstar.nix` now takes
-      `karamel-src`, `karamelOcamlDeps`, `ocamlLibraryPath` (in addition to the
-      `ocamlPackages.callPackage`-supplied deps).  Mirror upstream
-      `v2026.09.20:flake.nix` (its 23–52 lines: `karamelDrv` via `callPackage
-      "${karamel-src}/.nix/karamel.nix"`, `ocamlLibraryPath`, then pass
-      `karamelOcamlDeps = karamelDrv.propagatedBuildInputs`).  Keep the fork's
-      `+lsp` additions (`nativeBuildInputs ++ [ git ]`, `gtime` for karamel).
-- [ ] **T2.4 — flake.lock.**  `nix flake update --update-input fstar` (and the
-      renamed karamel input).
-- [ ] **T2.5 — Re-verify the gate.**  `nix build .#fstar-codec-checked` GREEN
-      at 0 admits (NOT the LSP check — looser), then
-      `.#fstar-codec-krml`/`.#fstar-codec-native`/`.#fstar-codec-ocaml`.
+- [x] **T2.1 — flake.nix: `fstar.url`.**  → `github:dysinger/fstar/v2026.09.20+lsp`.
+- [x] **T2.2 — OCaml version: 5.3.**  `ocamlPackages_5_3` everywhere (5.4 was
+      the fork's `t/ocaml-5.4` TopGit branch, not the tag).
+- [x] **T2.3 — karamel input.**  Removed entirely (see note above).
+- [x] **T2.4 — flake.lock.**  Updated (fstar → `cf84795`, karamel removed).
+- [x] **T2.5 — Re-verify the gate.**  `nix build .#fstar-codec-checked` GREEN
+      at 0 admits + `.#fstar-codec-ocaml` GREEN.  (`krml`/`native` removed —
+      F\* v2026.09.20 deleted the Low\*/KaRaMeL stdlib, so those targets are
+      gone, not merely broken.)
 
-## Phase 3 — Probe Custard (the point of the roll-forward)
+  The bootstrap needed `OTHERFLAGS='--z3rlimit 20 --retry 3'` (see flake.nix
+  `fstar` override) — default rlimit 5 makes `FStar.Math.Fermat.binomial_theorem`
+  deterministically time out.
 
-- [ ] **T3.1 — `--codegen Custard --custard_backend C`** on `Data.Codec.Low`
-      (via `--custard_entry`), compare against the existing `native` (krml→C)
-      output.  Record which constructs Custard covers (buffers? `Stack`? the
-      `decode_result_c` tagged union?) and which fall out.
-- [ ] **T3.2 — `--custard_monomorphize_types`** for the mathematical-int cases
-      (varint `%`/`/`) that krmllib truncates to `int32_t`.
-- [ ] **T3.3 — `--custard_backend KrmlRust`.**  Expected to be explicitly
-      unimplemented (`FStarC.Custard.Driver.fst`); record the exact message and
-      note it as a future datapoint, not a blocker.
+  Source drift fixed: `open FStar.Mul` removed, `Prims.op_Multiply` → `*`,
+  `--split_queries always` removed.
+
+## Phase 3 — Custard: the leaf needs a Pulse port, not a probe
+
+> **Finding (this session):** the `Data.Codec.Low` leaf is KaRaMeL Low\*
+> (`Stack` + `LowStar.Buffer`), and F\* `v2026.09.20` **removed that entire
+> stdlib**.  Custard's C backend extracts **Pulse** (`Pulse.Lib.Reference`/
+> `Vec`/`Array`), not Low\*.  So `--codegen Custard --custard_backend C` on
+> the current leaf is a non-starter; the leaf must be ported to Pulse first.
+
+- [x] **T3.1 — Probe.**  Not applicable until the leaf is Pulse.  The pure
+      spec (`Types`/`Codec`) extracts fine via OCaml; the leaf does not yet.
+- [ ] **T3.2 / T3.3.**  Deferred to the Pulse-port change.
 
 ## Phase 4 — Decide rust/wasm fate + commit
 
-- [ ] **T4.1 — Record the verdict.**  Confirm `rust`/`wasm` remain non-GREEN
-      (KaRaMeL backend defects; Custard has no wasm, and its Rust is
-      unimplemented) and document them as explicitly dropped near-term goals in
-      the README (update the target table).
-- [ ] **T4.2 — Commit** the flake/default/source changes in `fstar-codec`
-      (NOT `AGENTS.md`), and archive the `codec-native-rust-wasm` change after
-      this lands.
+- [x] **T4.1 — Record the verdict.**  `rust`/`wasm` (and the whole KaRaMeL
+      `krml`/`native` layer) are dropped — the toolchain that produced them
+      was deleted upstream.  The only C path is Custard, gated on the Pulse
+      port of `Data.Codec.Low`.  Documented in README + AGENTS.md.
+- [ ] **T4.2 — Commit.**  Pending review.
 
 ## Definition of done
 
-`nix build .#fstar-codec-checked` (0-admit) + `.#fstar-codec-native` (C) +
-`.#fstar-codec-ocaml` GREEN against `v2026.09.20+lsp`; Custard direct-C probed
-and findings recorded; `rust`/`wasm` documented as dropped (not deferred);
-fork branch pushed.
+`nix build .#fstar-codec-checked` (0-admit) + `.#fstar-codec-ocaml` GREEN
+against `v2026.09.20+lsp`; KaRaMeL/Low\* layer confirmed dead upstream and
+removed; Custard-C gated on a Pulse port of `Data.Codec.Low` (next change).
