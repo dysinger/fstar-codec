@@ -54,14 +54,39 @@ last tagged `v2025.12.15+lsp`); upstream `FStarLang/FStar` has none.  Rolling to
 
 ## Phase 2 — Point fstar-codec at the new toolchain
 
-- [ ] **T2.1 — flake.nix.**  Change `fstar.url` to the fork branch
-      (`github:dysinger/fstar/v2026.09.20+lsp`).  Decide whether `karamel` and
-      the nix overlay (`fstar.nix`, `karamel.nix`, `z3.nix`) need matching
-      bumps; `v2026.09.20`'s `.nix/fstar.nix`/`flake.nix` drifted from the
-      current pin (96/59-line diffs) — review before adopting.
-- [ ] **T2.2 — flake.lock.**  `nix flake update --update-input fstar` (and any
-      karamel/ocamlPackages bumps).
-- [ ] **T2.3 — Re-verify the gate.**  `nix build .#fstar-codec-checked` GREEN
+> **Status: user's WIP `flake.nix` is in the working tree (uncommitted).**  It
+> got the version + branch right but the karamel/OCaml wiring is incomplete.
+> Concrete corrections below are from `v2026.09.20`'s own `.nix/fstar.nix` and
+> `flake.nix`.
+
+- [ ] **T2.1 — flake.nix inputs.**  `fstar.url` →
+      `github:dysinger/fstar/v2026.09.20+lsp` (DONE in WIP).  **`karamel` is
+      NOT removable** — `v2026.09.20` renamed its karamel input to `karamel-src`
+      pointing at `github:FStarLang/karamel/fstar2` (not `dysinger/karamel/
+      coextract`), and `.nix/fstar.nix` needs `karamel-src` + `karamelOcamlDeps`
+      + `ocamlLibraryPath` as arguments.  Un-comment/rename the karamel input
+      accordingly.  (`dysinger/karamel/fstar2` and `FStarLang/karamel/fstar2`
+      are the same commit 79f86035 — pick the fork for consistency.)
+- [ ] **T2.2 — OCaml version: REVERT 5.4 → 5.3.**  The WIP bumped
+      `ocamlPackages_5_3` → `ocamlPackages_5_4`; that is WRONG — `v2026.09.20`
+      upstream still uses `ocamlPackages_5_3` (`flake.nix` line 26).  The 5.4
+      experiment was only on the fork's `t/ocaml-5.4` TopGit branch, not the
+      `v2026.09.20` tag.  Keep 5.3 (and keep the aarch64-darwin
+      `ocamlPackages_5_3.overrideScope` overlay + the exported `ocamlPackages =
+      ocamlPackages_5_3` consistent — the WIP still exports 5_3 while using
+      5_4 elsewhere).
+- [ ] **T2.3 — Rewrite the overlay's `fstar` call.**  The current overlay calls
+      `ocamlPackages.callPackage (inputs.fstar + "/.nix/fstar.nix") { version;
+      inherit z3; }` — but the `v2026.09.20` `fstar.nix` now takes
+      `karamel-src`, `karamelOcamlDeps`, `ocamlLibraryPath` (in addition to the
+      `ocamlPackages.callPackage`-supplied deps).  Mirror upstream
+      `v2026.09.20:flake.nix` (its 23–52 lines: `karamelDrv` via `callPackage
+      "${karamel-src}/.nix/karamel.nix"`, `ocamlLibraryPath`, then pass
+      `karamelOcamlDeps = karamelDrv.propagatedBuildInputs`).  Keep the fork's
+      `+lsp` additions (`nativeBuildInputs ++ [ git ]`, `gtime` for karamel).
+- [ ] **T2.4 — flake.lock.**  `nix flake update --update-input fstar` (and the
+      renamed karamel input).
+- [ ] **T2.5 — Re-verify the gate.**  `nix build .#fstar-codec-checked` GREEN
       at 0 admits (NOT the LSP check — looser), then
       `.#fstar-codec-krml`/`.#fstar-codec-native`/`.#fstar-codec-ocaml`.
 
