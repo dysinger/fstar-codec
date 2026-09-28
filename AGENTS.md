@@ -5,17 +5,109 @@ monorepo (`codec/`) as a standalone repo.  F* source is 0-admit.  This file
 records session state and the unfinished Pulse-port work so the next session
 resumes cleanly.
 
+## ⛔ MANDATES (binding — read before doing anything)
+
+1. **NEVER run `fstar.exe`, `nix build`, `make`, or any verification/extraction
+   step in the foreground.**  They can hang forever (observed: the Pulse
+   verify of `Data.Codec.Low` sleeps at 0% CPU for 35+ minutes — a non-terminating
+   Z3/Pulse query).  **Always** wrap them with a hard timeout so a stuck
+   process dies and you regain control:
+
+   ```bash
+   # macOS mkdir -p /tmp/x; time
+   timeout 600 fstar.exe ... || echo "TIMED OUT (exit $?)"
+   # or, portably, for a nix build:
+   nix build ... & pid=$!; ( sleep 900 && kill -9 $pid ) & guard=$!; wait $pid; kill $guard 2>/dev/null
+   ```
+
+   Choose a per-step budget (fstar verify ≤ 10 min, `nix build` ≤ 15 min) and
+   **kill anything that exceeds it** rather than letting it sit.  10% of
+   launched builds silently hang; treat a 0%-CPU `fstar.exe`/`nix` process as
+   stuck, not "still working".
+
+2. **Do not batch-verify multiple `fstar.exe` invocations without a timeout on
+   each.**  A hang in one module blocks everything downstream forever.
+
+3. **A hang is a bug to diagnose, not a patience exercise.**  A stopped (`S`,
+   0% CPU) `fstar.exe` mid-verify is almost always a non-terminating SMT query
+   in a Pulse `fn` (typically a post-condition that SMT can't discharge and
+   keeps exploring).  Capture *which* module/query and move on — see the
+   diagnosis in the next-session note below.
+
+> **Next steps** are tracked in openspec:
+> [`openspec/changes/low-pulse-port/tasks.md`](openspec/changes/low-pulse-port/tasks.md)
+> (the canonical task list — T1–T4, with T3.2/T3.3 open) and
+> [`openspec/changes/low-pulse-port/proposal.md`](openspec/changes/low-pulse-port/proposal.md)
+> (the change intent).
+
+## ⚠️ BLOCKED: `Data.Codec.Low` verification HANGS (next session's #1 task)
+
+The native gate does **not** currently build.  `Data.Codec.Types` and
+`Data.Codec` verify, then the `Data.Codec.Low` `fstar.exe` invocation **hangs
+forever** — observed stuck for 35+ minutes at 0% CPU, `status = stopped` (S).
+The process (probed this session):
+
+```
+fstar.exe --no_default_includes --include …/ulib \
+  --include …/pulse/common --include …/pulse/common.checked \
+  --include …/pulse/pulse/lib --include …/pulse/pulse.checked --include ./src \
+  --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
+  --z3rlimit 120 --cache_checked_modules --cache_dir cache --odir cache \
+  src/Data.Codec.Low.fst
+```
+
+**It verified and extracted GREEN earlier this same session** (commit `a34c984`
+landed the native target and produced `libfstar-codec.dylib`), so this is **not**
+a simple "can't typecheck" — it is a **non-terminating SMT query**, almost
+certainly a Pulse post-condition that Z3 keeps exploring and never returns.
+
+The earlier `--z3rlimit 80` run reported `encode_word32be`/`word32le` roundtrip
+lemmas** timing out**; `--z3rlimit 120` made those pass in the manual spike, but
+`120` is evidently insufficient/unreliable under the nix sandbox's exact
+context (different query splitting, resource limits).
+
+### Diagnosis plan for next session (do these in order, each with a timeout)
+
+1. **Isolate which `fn` hangs.**  Run `fstar.exe` on `Data.Codec.Low` with
+   `--z3rlimit` stepped (80 → 120 → 200 → 400) and **`--log_queries`** (or
+   `--log_types`/`--print_z3_statistics`), wrapped in `timeout 300`, and capture
+   the LAST query F* emits before it stops.  A hang (vs. a clean Error 19
+   timeout) means Z3 itself never returns on one query.
+2. **Suspects (by ordering):**
+   - `lemma_low_roundtrip_word32be` / `word32le` (division-vs-shift byte
+     extraction, the flaky spot seen earlier — the `word32*.enc` post uses
+     `U32.div`/`U32.rem` chains).
+   - `encode_word32be` / `encode_word32le` (the `Seq.slice s1 == word32*.enc`
+     post-condition — SMT must reduce `Seq.append`/`Seq.create` of 4 bytes).
+   - `decode_varint` / `varint_decode_expected` (5-way case analysis).
+  3. **Mitigations, in order:** (a) add an explicit `#push-options "--z3rlimit N"`
+     around the hanging `fn` to give *that query* more budget without raising
+     the global limit; (b) add a structural lemma (lift the byte-extraction
+     arithmetic out of the post-condition into a `Lemma`) so SMT has a
+     head-normal form instead of a big `Seq.equal`; (c) change the `ensures` to
+     reference a `noextract` helper predicate (like `varint_encode_pred` already
+     does) instead of an inline `Seq.slice … == word32*.enc …`.
+4. **Do NOT** repeatedly relaunch the full 3-module `nix build` — isolate the
+   single hanging module first, then re-run the derivation once.
+
+This is tracked as the #1 item; **T3.2 (test rewrite) is blocked on it** — the
+leaf must verify before the test modules (which `open Data.Codec.Low`) can be
+re-added.
+
 ## Current state (post Pulse port)
 
-### GREEN (verified this session, F* `v2026.09.20+lsp`)
+### GREEN (verified earlier this session, F* `v2026.09.20+lsp`)
+
+> ⚠️ **`Data.Codec.Low` now HANGS on re-verify** (see the BLOCKED note above).
+> The following were green earlier in the session and are the baseline to
+> recover:
 
 - `nix build .#fstar-codec-checked` — 0 admits.  Verifies **spec + Pulse leaf**:
-  `Data.Codec.Types` + `Data.Codec` + `Data.Codec.Low` (the leaf was rewritten in
-  Pulse; see below).
+  `Data.Codec.Types` + `Data.Codec` + `Data.Codec.Low`.
 - `nix build .#fstar-codec-ocaml` — pure spec to OCaml findlib (`fstar_codec`).
-- `nix build .#fstar-codec-native` — **NEW**: the Pulse leaf extracted to C11
-  via Custard, compiled to `libfstar-codec.{dylib,so,a}` + `fstar_codec.h`,
-  no karamel.
+- `nix build .#fstar-codec-native` — the Pulse leaf extracted to C11 via
+  Custard, `libfstar-codec.{dylib,so,a}` + `fstar_codec.h`, no karamel
+  (produced `dylib`/`a` once; now blocked by the hang).
 
 ### `Data.Codec.Low` is PORTED to Pulse (this session)
 
@@ -30,26 +122,31 @@ roundtrip lemmas automatically (the old `lemma_word32_shift_bytes` /
 
 ### Remaining work (NOT done)
 
-- **T3.2 — the two test modules.**  `test/Data.Codec.Test.{Roundtrip,
-  Integration}.fst` still `open` the dead Low*/`Stack` surface (`alloca`,
-  `LB.upd`/`LB.index`) and reference the dropped helper lemmas
-  (`lemma_pow2_32`, `lemma_buffer_length_bound`, `lemma_word32_shift_bytes`,
-  `lemma_encode_varint_eq_buffer`, `lemma_decode_varint_roundtrip`, …).  They
-  are still NOT in `TST_MODS`.  10 `Stack`-based tests in Roundtrip + ~20
-  coverage anchors in Integration need a Pulse rewrite.
-- The two test modules are the ONLY reason the gate runs `make check` with
-  `SRC_MODS` only (no `TST_MODS`).
+Only **T3.2 + T3.3** remain — rewrite the two test modules to Pulse and re-add
+them to `TST_MODS`.  The canonical, fully-detailed task list (exact test files,
+line ranges, the dropped helper lemmas, the Pulse idiom to use) lives in
+[`openspec/changes/low-pulse-port/tasks.md`](openspec/changes/low-pulse-port/tasks.md).
+In short:
 
-## The old KaRaMeL/Low\* layer is DEAD
+- `test/Data.Codec.Test.Roundtrip.fst` — 10 `Stack`-based roundtrip tests
+  (lines ~461–577) need a Pulse rewrite; the 110 pure tests are already fine.
+- `test/Data.Codec.Test.Integration.fst` — `_lowL0`…`_lowL8` anchor ~11 helper
+  lemmas that the Pulse port no longer needs (drop those anchors); `_low0`…
+  `_low22b` map cleanly to the Pulse `fn`s.
+- Both drop `open FStar.HyperStack`/`FStar.HyperStack.ST`/`LowStar.Buffer`.
+- The two test modules are the ONLY reason the gate runs with `SRC_MODS` only
+  (no `TST_MODS`).
+
+## The old KaRaMeL/Low\* layer is DEAD (and the leaf is now PORTED)
 
 F* `v2026.09.20` **removed the entire Low\*/KaRaMeL stdlib**: the namespaces
 `FStar.HyperStack`, `FStar.HyperStack.ST`, and `LowStar.Buffer` no longer
-exist.  Consequently:
+exist.  Consequently the **old** `src/Data.Codec.Low.fst` could not typecheck
+and was ported to Pulse this session (see "PORTED" above).  What remains dead:
 
-- `src/Data.Codec.Low.fst` (the KaRaMeL `Stack`+`LowStar.Buffer` leaf) **cannot
-  typecheck** against the new F\*.  It is still in the tree but not built.
-- `test/Data.Codec.Test.{Roundtrip,Integration}.fst` both `open Data.Codec.Low`
-  and are likewise not built.
+- `test/Data.Codec.Test.{Roundtrip,Integration}.fst` still `open Data.Codec.Low`
+  **and** `open FStar.HyperStack`/`FStar.HyperStack.ST`/`LowStar.Buffer` — they
+  are still not built (T3.2).
 
 The `krml` / `native` / `rust` / `wasm` targets were deleted along with the
 KaRaMeL toolchain.  The only C-extraction path in the new F\* is **Custard**
@@ -126,9 +223,13 @@ idiom is now applied in `src/Data.Codec.Low.fst`.  Key facts:
 
 ## Definition of done
 
-`nix build .#fstar-codec-checked` (0-admit, spec + leaf) and
-`nix build .#fstar-codec-native` (C11 shared object, no karamel) are GREEN.
-The two test modules (T3.2) are the only unfinished item.
+Per [`openspec/changes/low-pulse-port/tasks.md`](openspec/changes/low-pulse-port/tasks.md),
+GREEN at 0-admit with **tests restored**:
+`nix build .#fstar-codec-checked` (spec + leaf + the two test modules) and
+`nix build .#fstar-codec-native` (C11 shared object, no karamel).
+
+Current session already landed the leaf + `native`; **T3.2/T3.3 (the two test
+modules) is the only unfinished item.**
 
 ## Build commands
 
