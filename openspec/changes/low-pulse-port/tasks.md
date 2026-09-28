@@ -45,23 +45,23 @@ Custard (`--custard_backend C`), restoring the `native` target.
 
 ## Phase 3 — Restore the build + tests
 
-- [ ] **T3.1 — Re-add to Makefile.**  Restore `Data.Codec.Low` to `SRC_MODS`
-      and the two test modules to `TST_MODS`.
-- [ ] **T3.2 — Update test modules.**  Rewrite
-      `test/Data.Codec.Test.{Roundtrip,Integration}.fst`'s `Data.Codec.Low`
-      references to the Pulse API surface.
-- [ ] **T3.3 — Re-verify the gate.**  `nix build .#fstar-codec-checked`
-      GREEN at 0-admit with the leaf + tests back in.
+- [x] **T3.1 — Re-add to Makefile.**  Done: `Data.Codec.Low` back in
+      `SRC_MODS`; Makefile adds Pulse `--include` paths + `--already_cached`
+      for the Pulse stdlib.  `nix build .#fstar-codec-checked` GREEN.
+- [ ] **T3.2 — Update test modules.**  NOT STARTED.  `Data.Codec.Test.{}
+      Roundtrip,Integration}.fst` still `open` the dead Low*/`Stack` surface
+      (`alloca`, `LB.upd/index`, the dropped helper lemmas like
+      `lemma_pow2_32`/`lemma_word32_shift_bytes`).  Needs a Pulse rewrite
+      (10 `Stack`-based tests in Roundtrip + the Integration coverage anchors).
+- [ ] **T3.3 — Re-verify the gate.**  Pending T3.2 (leaf already green).
 
 ## Phase 4 — Land `native` (Custard direct-C)
 
-- [ ] **T4.1 — `native` derivation.**  Add a `native` target in `default.nix`
-      that runs `fstar.exe --codegen Custard --custard_backend C
-      --custard_monomorphize_types true --custard_entry_module Data.Codec.Low`
-      and compiles the emitted `.c` to a shared object with `cc` (no karamel).
-- [ ] **T4.2 — `flake.nix` package.**  Expose `.#fstar-codec-native`.
-- [ ] **T4.3 — Verify.**  `nix build .#fstar-codec-native` GREEN, producing
-      `libfstar-codec.{so,dylib}` + a `Data_Codec_Low`-shaped header.
+- [x] **T4.1 — `native` derivation.**  Done: `default.nix` `native` extracts
+      the leaf to C11 + compiles `libfstar-codec.{dylib,so,a}`.
+- [x] **T4.2 — `flake.nix` package.**  Done: `.#fstar-codec-native`.
+- [x] **T4.3 — Verify.**  Done: GREEN, produces `libfstar-codec.{so,dylib,a}`
+      + `fstar_codec.h` with all 18 API fns + 9 roundtrip lemmas exported.
 
 ## Definition of done
 

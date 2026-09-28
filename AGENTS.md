@@ -5,16 +5,42 @@ monorepo (`codec/`) as a standalone repo.  F* source is 0-admit.  This file
 records session state and the unfinished Pulse-port work so the next session
 resumes cleanly.
 
-## Current state (roll-forward session)
+## Current state (post Pulse port)
 
 ### GREEN (verified this session, F* `v2026.09.20+lsp`)
 
-- `nix build .#fstar-codec-checked` — 0 admits.  Verifies the **pure spec**
-  modules only: `Data.Codec.Types` + `Data.Codec`.
-- `nix build .#fstar-codec-ocaml` — compiles the pure spec to an OCaml
-  findlib package (`fstar_codec`), linking against `fstar.lib`.
+- `nix build .#fstar-codec-checked` — 0 admits.  Verifies **spec + Pulse leaf**:
+  `Data.Codec.Types` + `Data.Codec` + `Data.Codec.Low` (the leaf was rewritten in
+  Pulse; see below).
+- `nix build .#fstar-codec-ocaml` — pure spec to OCaml findlib (`fstar_codec`).
+- `nix build .#fstar-codec-native` — **NEW**: the Pulse leaf extracted to C11
+  via Custard, compiled to `libfstar-codec.{dylib,so,a}` + `fstar_codec.h`,
+  no karamel.
 
-### The old KaRaMeL/Low\* layer is DEAD
+### `Data.Codec.Low` is PORTED to Pulse (this session)
+
+The ~860-line Pulse rewrite is complete and 0-admit: 8 encoders + 8 decoders +
+`encode_bytes`/`decode_bytes` dispatch + `varint_encode_pred`/
+`varint_decode_expected` (`noextract` pure specs) + 8 roundtrip lemmas +
+`lemma_low_encode_decode_match`.  Extracts to warning-free C11.  The port was
+much easier than the proposal feared: the pure `codec` `.enc`/`.dec` are record
+projections that compute, so `dec (enc x)` reduces and SMT discharges the
+roundtrip lemmas automatically (the old `lemma_word32_shift_bytes` /
+`FStar.HyperStack.ST.get ()` `h_mid` heap threading is GONE, not ported).
+
+### Remaining work (NOT done)
+
+- **T3.2 — the two test modules.**  `test/Data.Codec.Test.{Roundtrip,
+  Integration}.fst` still `open` the dead Low*/`Stack` surface (`alloca`,
+  `LB.upd`/`LB.index`) and reference the dropped helper lemmas
+  (`lemma_pow2_32`, `lemma_buffer_length_bound`, `lemma_word32_shift_bytes`,
+  `lemma_encode_varint_eq_buffer`, `lemma_decode_varint_roundtrip`, …).  They
+  are still NOT in `TST_MODS`.  10 `Stack`-based tests in Roundtrip + ~20
+  coverage anchors in Integration need a Pulse rewrite.
+- The two test modules are the ONLY reason the gate runs `make check` with
+  `SRC_MODS` only (no `TST_MODS`).
+
+## The old KaRaMeL/Low\* layer is DEAD
 
 F* `v2026.09.20` **removed the entire Low\*/KaRaMeL stdlib**: the namespaces
 `FStar.HyperStack`, `FStar.HyperStack.ST`, and `LowStar.Buffer` no longer
@@ -68,132 +94,47 @@ flake.nix wiring (mirrors upstream `../fstar/flake.nix`):
 | Backend | Mechanism | Status |
 |---|---|---|---|
 | `ocaml` | `--codegen OCaml` (legacy ML) | ✅ GREEN now (pure spec; no Pulse needed) |
-| `native` (C) | `--custard_backend C` (direct C11, no karamel) | 🟡 needs the Pulse leaf |
+| `native` (C) | `--custard_backend C` (direct C11, no karamel) | ✅ GREEN (Pulse leaf ported) |
 | `fsharp` | `--codegen FSharp` / `--custard_backend FSharp` | 🟡 same Pulse prerequisite (`.NET 10` SDK) |
 | `rust` | `--custard_backend KrmlRust` → karamel | ❌ dead upstream (431 rustc errors, no `lowstar` module) |
 | `wasm` | — | ❌ gone — no wasm backend in the new F\* |
 
 Custard's `--custard_backend` enum is exactly `["OCaml"; "FSharp"; "KrmlC";
-"KrmlRust"; "C"]`.  There is no wasm anywhere.  `native` and `fsharp` both
-land once the leaf is Pulse; `rust`/`wasm` are dropped permanently.
+"KrmlRust"; "C"]`.  There is no wasm anywhere.  `native` is GREEN; `fsharp`
+is a separate follow-up (`.NET 10`); `rust`/`wasm` are dropped permanently.
 
-## Next step — AGENDA: rewrite `Data.Codec.Low` in Pulse
+## Pulse idiom (pinned by the spike, applied to the leaf)
 
-The single C leaf (`Data.Codec.Low`, ~1100 lines) must be rewritten from the
-KaRaMeL `Stack`+`LowStar.Buffer` style to **Pulse** so it can extract via
-Custard (`--custard_backend C`).  This IS the next session's primary task.
-The pure spec (`Data.Codec.Types` / `Data.Codec`) stays exactly as-is.
+`spike/Data.Codec.Spike.fst` (gitignored) was the Phase-1 spike; the exact
+idiom is now applied in `src/Data.Codec.Low.fst`.  Key facts:
 
-### Pulse idiom — PINNED by the spike (`spike/Data.Codec.Spike.fst`)
+- **Buffer type**: `A.array U8.t` (`Pulse.Lib.Array`), view `A.pts_to b s`
+  (`s : Seq.seq U8.t` erased).  Read `b.(j)`, write `b.(j) <- x` with `j :
+  SizeT.t`; convert `U32.t` offsets with `US.uint32_to_sizet`.
+- **Public API stays `U32.t`** (matching the pure spec + OCaml extraction).
+- **Bounds live in TYPES/refinements, not `pure` preconds** — a `pure (...)`
+  fact in `requires` is NOT visible in the `ensures`; use `A.length b` (pure
+  `Ghost nat`) for self-contained bounds and re-assert `A.length b ==
+  Seq.length s` in the `pure`.
+- **No `U32.v`/`U8.v`/nat `%` in extracted bodies** (Error 368): use
+  `FStar.Int.Cast.uint32_to_uint8` / `uint8_to_uint32`.
+- **`U32.add i k` needs `U32.v i + k < 4294967296`** in `requires`.
+- **word32be/le use `U32.div` (not shift)** to match the pure `*.enc`
+  division structure (avoids `lemma_word32_shift_bytes`).
+- **`noextract`** on `varint_encode_pred`/`varint_decode_expected` keeps
+  Custard from rooting them (they use `Seq`/`Prims.int`, which C can't emit).
 
-The throwaway module `spike/Data.Codec.Spike.fst` (gitignored) ports
-`encode_token`/`decode_token` to Pulse, verifies 0-admit, AND extracts to
-warning-free C11 via Custard.  It records the exact idiom to replicate:
+## Definition of done
 
-- **Module header**: `#lang-pulse`, then
-  `open Pulse`, `module US = FStar.SizeT`, `module U8 = FStar.UInt8`,
-  `module U32 = FStar.UInt32`, `module A = Pulse.Lib.Array`,
-  `open FStar.Int.Cast`.
-- **Buffer type**: `A.array U8.t` (NOT `Vec` — `Array` is simpler; both take
-  `SizeT.t` indices).  The heap view is `A.pts_to b s` where `s : Seq.seq U8.t`
-  (erased).  `A.pts_to_len b` recovers `A.length b == Seq.length s`.
-- **Read/write**: `b.(j) <- x` (write) / `let x = b.(j)` (read), where `j :
-  SizeT.t`.  **Index conversion**: `US.uint32_to_sizet i` for a `U32.t` offset.
-- **Public API stays `U32.t`** — offsets/`pos`/`n`/`value` keep `U32.t`
-  (matching the pure spec + OCaml extraction); only the buffer read/write
-  boundary does `uint32_to_sizet`.
-- **Bounds must live in the TYPES (refinements), not `pure` preconditions.**
-  A `pure (...)` fact in `requires` is NOT available while typechecking the
-  `ensures` clause or a body/`Seq.index` term.  For a self-contained `ensures`
-  referencing `Seq.slice`/`Seq.index`, use `A.length b` (a pure `Ghost nat`,
-  always in scope) for bounds, and re-assert `A.length b == Seq.length s` in
-  the `pure`.  See `Pulse.Lib.Array.PtsToRange.pts_to_range_index` for the
-  canonical pattern (bounds on `Ghost.erased nat` implicit args).
-- **Never use `U32.v` / `U8.v` / `%` on `nat` in extracted bodies.**
-  `Prims.int` has no C representation (Error 368).  Use `FStar.Int.Cast`
-  narrow/wide casts: `uint32_to_uint8`, `uint8_to_uint32` (the old KrmlBasic
-  test's idiom).  `U32.v` is fine in specs/`pure` (erased).
-- **`U32.add i n` needs an overflow precondition** `U32.v i + U32.v n <
-  4294967296` in `requires` (the old `lemma_u32_add_no_overflow`).
-- **`decode_result_c` is a tagged union → clean C.**  Verified: emits an
-  if/else chain + `union { struct {...} Dr_ok; uint32_t Dr_eof; }`, no
-  struct-return trap.
-
-### Build/dev-loop invocation for the spike (replicate for the leaf)
-
-```bash
-nix develop -c bash -c '
-ULIB=$(fstar.exe --locate_lib)
-fstar.exe --include ./src \
-  --cache_checked_modules --cache_dir spike/cache --odir spike/out \
-  --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
-  spike/Data.Codec.Spike.fst
-# extract (library mode — no main):
-fstar.exe --include ./src \
-  --cache_checked_modules --cache_dir spike/cache \
-  --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
-  --codegen Custard --custard_backend C --custard_monomorphize_types true \
-  --custard_entry_module Data.Codec.Spike --odir spike/c_out \
-  spike/Data.Codec.Spike.fst
-cc -c -Wall -Wextra -Werror -std=c11 spike/c_out/Custard.c -I spike/c_out -o spike/c_out/Custard.o
-'
-```
-
-Notes: the installed F\* ships Pulse in its default lib path (no `--include`
-needed for Pulse itself); `--already_cached` skips re-verifying the Pulse
-stdlib.  `Data.Codec.Types` must be verified into `spike/cache` FIRST
-(dependency order) or Error 317/247 fires.  `--custard_entry_module` (not
-`--custard_main`) is the library-mode root.
-
-### Key facts for the port
-
-- Custard's buffer rules (`src/custard/FStarC.Custard.Builtins.fst`
-  `pulse_rule`) cover ONLY `Pulse.Lib.Reference`, `Pulse.Lib.Vec`,
-  `Pulse.Lib.Array.Core`, `Pulse.Lib.Box`, `Pulse.Lib.ArrayPtr`.  There is no
-  `LowStar.Buffer` rule.
-- Custard requires `--custard_monomorphize_types true` for the C backend (no
-  type variables in C).
-- `decode_result_c` (a tagged union) returns fine from Custard-C (unlike the
-  old KaRaMeL wasm backend) — the C backend emits an if/else chain, not a
-  struct-return trap.
-- The Kaplan reference: `../fstar/doc/ref/custard.md` §7.4 (Pulse → IR rule
-  table), §3.1 (monomorphization), §16 (test matrix), §4.4 (entry points).
-- Pulse examples to crib from: `../fstar/pulse/lib/pulse/lib/Pulse.Lib.Array.Core.fst`
-  and the Custard C regression `tests/custard/KrmlBasic.fst` (records, variants,
-  machine integers).
-
-### Port plan (in dependency order)
-
-1. **Map the API surface.**  The 8 leaf encoders/decoders + `encode_bytes`/
-   `decode_bytes` + the `codec_t`/`decode_result_c` types all carry over.  The
-   `Stack` effect becomes Pulse `fn`; `LB.buffer U8.t` becomes a `Pulse.Lib.Vec.vec
-   U8.t` (or `Array` for stack-allocated); `LB.upd`/`LB.index` become
-   `Pulse.Lib.Vec`'s read/write; `modifies (LB.loc_buffer b)` / `h0 == h1` become
-   Pulse separation-logic pre/post.
-2. **Start with the simplest leaf** (`encode_token` / `decode_token`) as a
-   spike to pin the correct Pulse idiom, then replicate across the other 7.
-3. **`decode_result_c` is a plain tagged union → fine for C.**  No out-param
-   refactor needed (that was the OLD wasm limitation; Custard-C has no such
-   constraint).
-4. **Re-verify 0-admit** — `nix build .#fstar-codec-checked` after re-adding
-   the leaf + its two test modules to `SRC_MODS`/`TST_MODS`.  The two test
-   modules will also need their `Low` references updated to the Pulse surface.
-5. **Wire the `native` target** — `fstar.exe --codegen Custard --custard_backend C
-   --custard_monomorphize_types true --custard_entry_module Data.Codec.Low`
-   (whole-program from an entry; a library has no `main`, so use
-   `--custard_entry_module`, not `--custard_main`).
-6. **Optionally land `fsharp`** (`.NET 10` SDK + `--custard_backend FSharp`).
-
-### Definition of done
-
-`nix build .#fstar-codec-checked` (0-admit, spec + leaf + tests) and
-`nix build .#fstar-codec-native` (C11 shared object from Custard, no karamel)
-GREEN.
+`nix build .#fstar-codec-checked` (0-admit, spec + leaf) and
+`nix build .#fstar-codec-native` (C11 shared object, no karamel) are GREEN.
+The two test modules (T3.2) are the only unfinished item.
 
 ## Build commands
 
 ```bash
-nix build .#fstar-codec-checked   # verification gate (0-admit, pure spec only)
+nix build .#fstar-codec-checked   # verification gate (0-admit, spec + Pulse leaf)
 nix build .#fstar-codec-ocaml     # OCaml package of the pure spec
+nix build .#fstar-codec-native    # C11 shared/static lib of the Pulse leaf
 nix develop && make check         # dev loop (no nix)
 ```
