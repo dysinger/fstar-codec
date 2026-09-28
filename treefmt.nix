@@ -18,8 +18,7 @@
 # double-space sentence gaps and `*`/`F*` emphasis that prettier rewrites into
 # churn.  `../db/treefmt.nix` makes the same call (it excludes `*.md`).
 
-_:
-{
+_: {
   projectRootFile = "flake.nix";
 
   programs.nixfmt.enable = true;
