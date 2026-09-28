@@ -39,9 +39,18 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
 
 - [ ] **C3 — README advertises combinators/operators that do not exist.**  README:54–56
       lists `byte`, `u16`, `u32`, `seq`, `fixed`, `counted`, `many`, `many1`,
-      `>>=` — none are in `src/`.  Grep-confirmed.  Rewrite README's combinator
-      list to enumerate only what actually exists (the 20 `codec` constructors +
-      the real operators `*>`, `<*`, `<|>`).
+      `>>=` — none are in `src/`.  Grep-confirmed.  **Provenance (traced this
+      session): this is NOT a regression and nothing was deleted — the fictional
+      list was written in the very first commit (`fe61809`) and carried forward
+      by the `bfa9e66` README rewrite.  The sibling `../xeno/codec/README.md`
+      has the *accurate* table (19 real combinators: `token, byte_val, satisfy,
+      pure, text, bytes, uint8, word16*, word32*, varint, digits_to_int, custom,
+      product, sum, map_, count, label, alt, one_of, take_until`); the standalone
+      repo's README was rewritten aspirationally and never imported that table.
+      Fix: rewrite README's combinator list to enumerate only the real 20
+      `codec a` constructors (the 19 base + `alt`) + the real operators `*>`, `<*`,
+      `<|>` — mirroring `../xeno/codec/README.md`'s accurate table.  Do NOT go
+      hunting for deleted combinators; there never were any.
 
 - [ ] **C4 — Test count is off-by-one in three places, none correct.**  README:62
       "120 roundtrip and error-path tests"; AGENTS.md:104 "the 110 pure tests";

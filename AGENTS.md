@@ -2,8 +2,8 @@
 
 `Data.Codec` — verified bidirectional codec library, extracted from the xeno
 monorepo (`codec/`) as a standalone repo.  F* source is 0-admit.  This file
-records session state and the unfinished Pulse-port work so the next session
-resumes cleanly.
+records session state and the open reviewer-findings work so the next session
+resumes cleanly (the Pulse port itself is complete — see "Definition of done").
 
 ## ⛔ MANDATES (binding — read before doing anything)
 
@@ -211,20 +211,22 @@ idiom is now applied in `src/Data.Codec.Pulse.fst`.  Key facts:
 
 ## Definition of done
 
-**DONE** — the repo is fully ported to F\* `v2026.09.20` and the complete gate
-is GREEN at 0-admit.  This session (the `pulse-fsdoc-finalize` change) landed:
+The **port to F\* `v2026.09.20` is functionally complete** and the build gate
+is GREEN at 0-admit.  This session (the `pulse-fsdoc-finalize` change) landed
+(fsdoc/regroup + real nix gate), and a subsequent uncompromising review
+surfaced a set of **documentation-truthfulness and hygiene deficiencies** that
+are tracked, unfiltered, as the next session's work:
 
-- `Data.Codec.Pulse` regrouped into alphabetical groups (with the
-  **varint-last** SMT-safe ordering — see "Pulse idiom" above) and fully
-  fsdoc'd.
-- `Data.Codec.Types` + `Data.Codec` fsdoc-audited (every public decl carries
-  `(** … *)`).
-- Real nix gate run end-to-end: `nix build .#native .#ocaml .#fsharp` +
-  `nix flake check` (incl. `.#formatting`) + `nix develop && make check` —
-  **all GREEN**.
-
-No further functional work remains.  The only open openspec items are
-bookkeeping (ticking done boxes, archiving dead changes) — see the task files.
+> **Next steps (canonical):** [`openspec/changes/reviewer-findings/tasks.md`](openspec/changes/reviewer-findings/tasks.md)
+> (and [`proposal.md`](openspec/changes/reviewer-findings/proposal.md)).
+> Main items: C2/C4 (combinator count 19/21/22 + test count 110/120 drift —
+> both must be reconciled to a mechanically-verifiable number), C3 (README
+> advertises `byte`/`u16`/`u32`/`seq`/`fixed`/`counted`/`many`/`many1`/`>>=`
+> — never existed, traced back to commit `fe61809`, not a deletion), plus
+> M1–M7/W1–W8 (dead `_pulse` types, duplicate fsdoc, rlimit drift, CHANGELOG
+> double-section, fork-tag + `.NET 10` reachability) and S1–S5 hygiene.  C1 is
+> resolved as by-design (the anchor module's scoped `--admit_smt_queries true`
+> is semantically neutral; anchors add no new VCs, see tasks.md).
 
 ## Build commands
 
