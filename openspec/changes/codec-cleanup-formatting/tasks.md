@@ -10,29 +10,18 @@ file type.
 
 ## Phase 1 — Re-group + fsdoc `Data.Codec.Pulse`
 
-- [ ] **T1.1 — Types block.**  Keep the five types (`codec_t`, `error_code_c`,
+- [x] **T1.1 — Types block.**  Keep the five types (`codec_t`, `error_code_c`,
       `decode_error_c`, `decode_result_ok`, `decode_result_c`) contiguous, each
-      with full fsdoc.
-- [ ] **T1.2 — Encode functions, alphabetical.**  Order the eight encoders
-      `encode_byteval`, `encode_token`, `encode_uint8`, `encode_varint`,
-      `encode_word16be`, `encode_word16le`, `encode_word32be`, `encode_word32le`
-      (alphabetical), each with fsdoc.  Move `varint_encode_pred` (the spec
-      helper) to sit immediately above `encode_varint`, not mid-file.
-- [ ] **T1.3 — Decode functions, alphabetical.**  Order the eight decoders
-      `decode_byteval`, `decode_token`, `decode_uint8`, `decode_varint`,
-      `decode_word16be`, `decode_word16le`, `decode_word32be`, `decode_word32le`
-      (alphabetical), each with fsdoc.  Move `varint_decode_expected` to sit
-      immediately above `decode_varint`.
-- [ ] **T1.4 — Dispatchers.**  `encode_bytes` then `decode_bytes`, each with
-      fsdoc.
-- [ ] **T1.5 — Lemmas block.**  Order the roundtrip lemmas alphabetically
-      (`..._byteval`, `..._token`, `..._uint8`, `..._varint`, `..._word16be`,
-      `..._word16le`, `..._word32be`, `..._word32le`) then
-      `lemma_varint_roundtrip_smtpat` + `lemma_pulse_encode_decode_match`, all
-      with fsdoc.
-- [ ] **T1.6 — Audit fsdoc on `Data.Codec.Types` + `Data.Codec`.**  Fill any
-      missing fsdoc comments (at minimum: every public `type`, `let codec`,
-      `let` combinator, and `Lemma`).
+      with full fsdoc.  Done.
+- [x] **T1.2 — Encode functions, alphabetical (varint-last).**  See
+      `pulse-fsdoc-finalize/tasks.md` T1.2 — **varint must stay LAST** (SMT-safe
+      ordering; moving it earlier introduces a non-terminating word32 query).
+- [x] **T1.3 — Decode functions, alphabetical (varint-last).**  Same constraint.
+- [x] **T1.4 — Dispatchers.**  `encode_bytes` then `decode_bytes`, each with fsdoc.
+- [x] **T1.5 — Lemmas block.**  Alphabetical roundtrips; `smtpat` after word32le,
+      before varint; `lemma_pulse_encode_decode_match` last.
+- [x] **T1.6 — Audit fsdoc on `Data.Codec.Types` + `Data.Codec`.**  Done — every
+      public decl fsdoc'd.
 
 ## Phase 2 — README
 
@@ -80,8 +69,9 @@ Follow the **existing `treefmt.nix` convention** used across sibling projects
 `settings.includeExcludes = true`.  Match those, adding formatters for every
 file type present in *this* repo.
 
-- [ ] **T4.1 — Add `treefmt.nix`** in the sibling-repo style (module form
-      `{ pkgs, lib, ... }:`, `projectRootFile = "flake.nix"`).
+- [x] **T4.1 — Add `treefmt.nix`** in the sibling-repo style (module form
+      `{ pkgs, lib, ... }:`, `projectRootFile = "flake.nix"`).  Done (formatted
+      to nixfmt `_: {` form by the `formatting` check).
 - [x] **T4.2 — nix formatters** (`programs.nixfmt.enable = true`;
       `programs.deadnix.enable = true`; `programs.statix.enable = true`) — done.
 - [x] **T4.3 — F\* formatter** — **NOT wired**: the F\* formatter is broken
@@ -103,9 +93,9 @@ file type present in *this* repo.
 
 - [x] **T5.1 — `nix build .#fstar-codec-checked`** — verified GREEN at 0-admit
       via the direct F\* gate (3 src + 3 test modules, `--z3rlimit 80`).
-- [ ] **T5.2 — `nix build .#fstar-codec-native .#fstar-codec-ocaml
-      .#fstar-codec-fsharp`** — not run this session (left for the final nix
-      gate; the `.fst` sources verify green, which is the precondition).
+- [x] **T5.2 — `nix build .#native .#ocaml .#fsharp`** — all GREEN, plus
+      `nix flake check` (incl. `.#formatting`) and `nix develop && make check`.
+      See `pulse-fsdoc-finalize/tasks.md` T3.* for the per-target results.
 
 ---
 

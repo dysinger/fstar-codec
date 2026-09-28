@@ -34,20 +34,12 @@ resumes cleanly.
    keeps exploring).  Capture *which* module/query and move on — see the
    diagnosis in the next-session note below.
 
-> **Next steps** are tracked in openspec:
-> [`openspec/changes/pulse-fsdoc-finalize/tasks.md`](openspec/changes/pulse-fsdoc-finalize/tasks.md)
-> (the canonical task list — finish the fsdoc/regroup of `Data.Codec.Pulse` +
-> run the real `nix build .#native .#ocaml .#fsharp` / `nix flake check` gate)
-> and
-> [`openspec/changes/pulse-fsdoc-finalize/proposal.md`](openspec/changes/pulse-fsdoc-finalize/proposal.md)
-> (the change intent).
+## ✅ RESOLVED: `Data.Codec.Pulse` verification hang (FIXED two sessions ago)
 
-## ⚠️ BLOCKED: `Data.Codec.Pulse` verification HANGS (next session's #1 task)
-
-> **Canonical task list**: [`openspec/changes/diagnose-pulse-hang/tasks.md`](openspec/changes/diagnose-pulse-hang/tasks.md)
+> **Canonical record**: [`openspec/changes/diagnose-pulse-hang/tasks.md`](openspec/changes/diagnose-pulse-hang/tasks.md)
 > (and [`proposal.md`](openspec/changes/diagnose-pulse-hang/proposal.md)).
-
-### ✅ FIXED (this session) — `Data.Codec.Pulse` verify was a varint-roundtrip SMT hang
+>
+> ### FIXED — `Data.Codec.Pulse` verify was a varint-roundtrip SMT hang
 
 **Root cause (bisected):** `lemma_pulse_roundtrip_varint` is a **non-terminating
 SMT query** — not the word32 lemmas (those are *slow* ~90s but terminate), and
@@ -70,12 +62,11 @@ identities, lifting the div/mod decomposition into head-normal form.  The
 trigger fires where the roundtrip `fn`'s term (`varint_decode_expected i m s1`,
 `U32.v m == nbytes_of_varint (U32.v v)`) unifies `m` to the `uint_to_t` form.
 
-**Verified GREEN end-to-end (this session):**
-- `make check` verify loop (Types → Codec → Pulse, `--z3rlimit 120`): all three
-  modules "All verification conditions discharged successfully", 0-admit.
-- `nix build .#fstar-codec-native`: **succeeds**, producing
-  `libfstar-codec.dylib`, `libfstar-codec.a`, `fstar_codec.h` (`Custard.c/.h/.o`)
-  at `/nix/store/v1w9zsvy8v921kdvcn5cyhkyd2h1was7-fstar-codec-native-0.1.0`.
+**Verified GREEN end-to-end:**
+- `make check` / direct verify loop (Types → Codec → Pulse → 3 test modules,
+  `--z3rlimit 120`): all six modules
+  "All verification conditions discharged successfully", 0-admit.
+- `nix build .#native .#ocaml .#fsharp` + `nix flake check` — all GREEN.
 
 T3.2/T3.3 (test rewrite) is now **DONE** — the leaf AND the three test modules
 all verify; `TST_MODS` is populated.
@@ -168,19 +159,22 @@ flake.nix wiring (mirrors upstream `../fstar/flake.nix`):
   into the nested `make -f mk/lib.mk` (the `.alib2.src.touch` recipe does not
   re-specify it, unlike `fsharp-lib.src`).
 
-## Backend matrix (post roll-forward)
+## Backend matrix (post roll-forward, post fsdoc-finalize)
+
+All four targets GREEN, verified this session via the real nix gate:
 
 | Backend | Mechanism | Status |
-|---|---|---|---|
-| `ocaml` | `--codegen OCaml` (legacy ML) | ✅ GREEN now (pure spec; no Pulse needed) |
-| `native` (C) | `--custard_backend C` (direct C11, no karamel) | ✅ GREEN (Pulse leaf ported) |
-| `fsharp` | `--codegen FSharp` / `--custard_backend FSharp` | 🟡 same Pulse prerequisite (`.NET 10` SDK) |
+|---|---|---|
+| `ocaml` | `--codegen OCaml` (legacy ML) | ✅ GREEN (findlib `codec-ocaml`) |
+| `native` (C) | `--custard_backend C` (direct C11, no karamel) | ✅ GREEN (`libcodec.{dylib,a}` + `codec.h`) |
+| `fsharp` | `--codegen FSharp` / `--custard_backend FSharp` | ✅ GREEN (`.NET 10` SDK, `Custard.dll`, 0 warn/err) |
+| `checked` | F\* verify gate | ✅ GREEN (0-admit, 3 src + 3 test) |
 | `rust` | `--custard_backend KrmlRust` → karamel | ❌ dead upstream (431 rustc errors, no `lowstar` module) |
 | `wasm` | — | ❌ gone — no wasm backend in the new F\* |
 
 Custard's `--custard_backend` enum is exactly `["OCaml"; "FSharp"; "KrmlC";
-"KrmlRust"; "C"]`.  There is no wasm anywhere.  `native` is GREEN; `fsharp`
-is a separate follow-up (`.NET 10`); `rust`/`wasm` are dropped permanently.
+"KrmlRust"; "C"]`.  There is no wasm anywhere.  `native`, `ocaml`, and
+`fsharp` are all GREEN; `rust`/`wasm` are dropped permanently.
 
 ## Pulse idiom (pinned by the spike, applied to the leaf)
 
@@ -202,18 +196,35 @@ idiom is now applied in `src/Data.Codec.Pulse.fst`.  Key facts:
   division structure (avoids `lemma_word32_shift_bytes`).
 - **`noextract`** on `varint_encode_pred`/`varint_decode_expected` keeps
   Custard from rooting them (they use `Seq`/`Prims.int`, which C can't emit).
+- **Declaration order is SMT-sensitive — varint MUST stay LAST.**
+  `encode_varint`/`varint_encode_pred` (and `decode_varint`/
+  `varint_decode_expected`) must come **after** the word16/word32 encoders,
+  not alphabetically among them.  Moving them earlier puts the 5-way varint
+  case-split in scope *before* `lemma_pulse_roundtrip_word32be`, tipping that
+  already-fragile word32 SMT query from "slow (~90s)" into a non-terminating
+  z3 spin (100% CPU).  Likewise `lemma_varint_roundtrip_smtpat` must sit after
+  `lemma_pulse_roundtrip_word32le` (its SMTPat trigger pollutes the word-lemma
+  queries) and immediately before `lemma_pulse_roundtrip_varint` (dependency).
+  The canonical order (verified 0-admit) is: byteval, token, uint8,
+  word16be, word16le, word32be, word32le, varint(-pred/-spec), then smtpat,
+  varint-roundtrip, encode_decode_match.
 
 ## Definition of done
 
-Per [`openspec/changes/low-pulse-port/tasks.md`](openspec/changes/low-pulse-port/tasks.md),
-GREEN at 0-admit with **tests restored**:
-`nix build .#checked` (spec + leaf + the three test modules) and
-`nix build .#native` (C11 shared object, no karamel).
+**DONE** — the repo is fully ported to F\* `v2026.09.20` and the complete gate
+is GREEN at 0-admit.  This session (the `pulse-fsdoc-finalize` change) landed:
 
-**T3.2/T3.3 are now DONE** — the full gate (3 src + 3 test modules) verifies
-GREEN at 0-admit.  Remaining polish is tracked in
-[`openspec/changes/codec-cleanup-formatting/tasks.md`](openspec/changes/codec-cleanup-formatting/tasks.md)
-(group/sort + fsdoc the Pulse module, refresh README, treefmt).
+- `Data.Codec.Pulse` regrouped into alphabetical groups (with the
+  **varint-last** SMT-safe ordering — see "Pulse idiom" above) and fully
+  fsdoc'd.
+- `Data.Codec.Types` + `Data.Codec` fsdoc-audited (every public decl carries
+  `(** … *)`).
+- Real nix gate run end-to-end: `nix build .#native .#ocaml .#fsharp` +
+  `nix flake check` (incl. `.#formatting`) + `nix develop && make check` —
+  **all GREEN**.
+
+No further functional work remains.  The only open openspec items are
+bookkeeping (ticking done boxes, archiving dead changes) — see the task files.
 
 ## Build commands
 

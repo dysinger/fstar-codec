@@ -1,5 +1,12 @@
 # Implementation Tasks: codec-native-rust-wasm
 
+**STATUS: SUPERSEDED by F\* v2026.09.20.**  This change targeted the old
+KaRaMeL `native`/`rust`/`wasm` toolchain, which v2026.09.20 **removed
+entirely**.  `native` is now GREEN via Custard's `--custard_backend C`; `rust`
+and `wasm` are permanently dropped (no karamel, no wasm backend).  The only
+remaining open boxes below (T2.2 rust / T2.3 wasm / T3.3 + T3.4 bookkeeping)
+are moot and archived here for the record.
+
 **Change**: compile `fstar-codec` to `native`/`rust`/`wasm` (in addition to the
 working `ocaml`).  Root cause is the `open Data.Codec.Types` in
 `src/Data.Codec.Pulse.fst` leaking `FStar.List` reachability into the rust/wasm

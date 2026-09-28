@@ -1,5 +1,11 @@
 # Implementation Tasks: fstar-roll-forward
 
+**STATUS: LANDED.**  The toolchain roll to `v2026.09.20` is complete and the
+full `fstar-codec` gate is GREEN (see `AGENTS.md`).  The remaining unchecked
+boxes below are upstream-`fstar`-repo chores (bootstrap/push/LSP of the *F\*
+compiler itself*, in `../fstar`) — **not** work in this repo, and out of scope
+for the `fstar-codec` port.
+
 **Change**: roll the `fstar-codec` toolchain from `dysinger/fstar`
 `v2025.10.06+lsp` to `v2026.09.20` (first stable tag with the Custard
 extractor), keeping the fork's LSP server by porting it onto a new

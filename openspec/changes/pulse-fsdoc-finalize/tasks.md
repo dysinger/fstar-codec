@@ -18,9 +18,9 @@ types → `encode_token` / `encode_byteval` / `encode_uint8` / `encode_word16be`
 
 Target order (alphabetical within each group):
 
-- [ ] **T1.1 — Types block.**  Keep `codec_t`, `error_code_c`, `decode_error_c`,
-      `decode_result_ok`, `decode_result_c` contiguous, each with fsdoc (already
-      mostly present — verify).
+- [x] **T1.1 — Types block.**  Keep `codec_t`, `error_code_c`, `decode_error_c`,
+      `decode_result_ok`, `decode_result_c` contiguous, each with fsdoc.  DONE
+      (already contiguous; verified).
 - [x] **T1.2 — Encoders, alphabetical (non-varint) + varint last.**
       `encode_byteval`, `encode_token`, `encode_uint8`, `encode_word16be`,
       `encode_word16le`, `encode_word32be`, `encode_word32le`, then
@@ -37,7 +37,7 @@ Target order (alphabetical within each group):
       `decode_word16le`, `decode_word32be`, `decode_word32le`, then
       `varint_decode_expected` (immediately above) `decode_varint`.  Same
       SMT-scope constraint as encoders.
-- [ ] **T1.4 — Dispatchers.**  `encode_bytes` then `decode_bytes`, fsdoc'd.
+- [x] **T1.4 — Dispatchers.**  `encode_bytes` then `decode_bytes`, fsdoc'd.  DONE.
 - [x] **T1.5 — Lemmas.**  `lemma_pulse_roundtrip_{byteval,token,uint8,word16be,
       word16le,word32be,word32le}` then `lemma_varint_roundtrip_smtpat` (must sit
       **after** word32le — its SMTPat trigger otherwise pollutes the word-lemma
@@ -52,14 +52,13 @@ Target order (alphabetical within each group):
 
 ## Phase 2 — fsdoc audit on the pure spec (T1.6 from codec-cleanup-formatting)
 
-- [ ] **T2.1 — `Data.Codec.Types` (2644 lines).**  Every public `type`, `let`
-      codec/combinator, and `Lemma` carries `(** … *)` fsdoc.  Fill gaps (the
-      tail combinators `alt`, `one_of`, `take_until`, and the `lemma_*_eq`
-      refinement lemmas are the likely gaps).
-- [ ] **T2.2 — `Data.Codec` (127 lines).**  Same audit (derived combinators +
-      char predicates).
-- [ ] **T2.3 — Re-verify both** after any doc-only edits (should be a no-op
-      re-verify, but confirm).
+- [x] **T2.1 — `Data.Codec.Types` (2644 lines).**  Every public `type`, `let`
+      codec/combinator, and `Lemma` carries `(** … *)` fsdoc.  Filled the gaps
+      (the `alt_*` helper group, `varint`, `custom`, `lemma_varint_enc_dec_{1..5}byte`,
+      `lemma_{bytes_decode_prefix,varint_decode_shift,digits_*}_*`, etc.).
+- [x] **T2.2 — `Data.Codec` (127 lines).**  Same audit (derived combinators,
+      operator aliases, char predicates, backward-compat aliases) — all fsdoc'd.
+- [x] **T2.3 — Re-verify both** after the doc-only edits — GREEN, 0-admit.
 
 ## Phase 3 — Real nix build gate (T5.2 from codec-cleanup-formatting)
 
@@ -67,24 +66,21 @@ The previous session only verified via a hand-rolled `fstar.exe` driver and
 `nix eval .#X.name` (cheap name-string eval).  The actual builds/checks were
 **never run**.  Do them now (guarded):
 
-- [ ] **T3.1 — `nix build .#native`** (C11 shared/static lib).  Confirm
-      `libcodec.{dylib,so,a}` + `codec.h` are produced (note: names changed from
-      `libfstar-codec.*`/`fstar_codec.h` — see the `pname = "codec"` change).
-- [ ] **T3.2 — `nix build .#ocaml`** (OCaml findlib package).
-- [ ] **T3.3 — `nix build .#fsharp`** (.NET library via `.NET 10`).
-- [ ] **T3.4 — `nix flake check`**, including the new `.#formatting` target
-      (`treefmt-nix` wired in the previous session).
-- [ ] **T3.5 — `nix develop && make check`** as an end-to-end dev-loop smoke
-      test (the previous session used a direct driver, not this path).
+- [x] **T3.1 — `nix build .#native`** — GREEN.  `libcodec.{dylib,a}` + `codec.h`
+      produced (names confirm the `pname = "codec"` change).
+- [x] **T3.2 — `nix build .#ocaml`** — GREEN (findlib `codec-ocaml`).
+- [x] **T3.3 — `nix build .#fsharp`** — GREEN (`.NET 10` SDK, `Custard.dll`,
+      0 warnings 0 errors).
+- [x] **T3.4 — `nix flake check`** — GREEN, incl. the `.#formatting` target
+      (`treefmt.nix` formatted to nixfmt `_: {` form).
+- [x] **T3.5 — `nix develop && make check`** — GREEN (all 6 modules 0-admit).
 
 ## Phase 4 — Land the record
 
-- [ ] **T4.1 — Update `AGENTS.md`** handoff state: mark
-      `codec-cleanup-formatting` T1/T5 done, point at this change as the new
-      "next steps", and record any new findings (artifact-name change, backend
-      build results, `.NET 10` status).
-- [ ] **T4.2 — Update the backend matrix** in `AGENTS.md` § "Backend matrix" if
-      `#fsharp`/`#ocaml` build results differ from the current `🟡`/`✅` marks.
+- [x] **T4.1 — Update `AGENTS.md`** handoff state — DONE (mark cleanup T1/T5
+      done, new backend status, varint-last finding recorded).
+- [x] **T4.2 — Update the backend matrix** in `AGENTS.md` — DONE (`fsharp` → ✅,
+      `native`/`ocaml` → ✅, `checked` added).
 
 ## Definition of done
 
