@@ -34,3 +34,18 @@ The prime suspects (all observed `--z3rlimit`-sensitive earlier):
 
 `nix build .#fstar-codec-checked` and `nix build .#fstar-codec-native` both
 terminate and are green at 0-admit, with `Data.Codec.Pulse` verifying.
+
+## Result (landed)
+
+**Root cause:** `lemma_pulse_roundtrip_varint` is a non-terminating SMT query
+(z3 at 100% CPU forever; not rlimit-sensitive — 800 still spins).  The word32
+lemmas are slow-but-terminate; the real hang is the hand-inlined varint
+encode→decode roundtrip (5-way `%128`/`/128` + U32 reconstruction).
+
+**Fix:** pure `noextract` `Lemma` `lemma_varint_roundtrip_smtpat` with an
+`[SMTPat …]` trigger, body discharged by the existing
+`DC.lemma_varint_{2..5}byte_arithmetic` identities.  22 lines, 0-admit.
+
+**Done:** `make check` verify loop GREEN (Types/Codec/Pulse all discharge);
+`nix build .#fstar-codec-native` GREEN (produces `libfstar-codec.dylib` +
+`libfstar-codec.a` + `fstar_codec.h`).

@@ -1015,6 +1015,28 @@ fn lemma_pulse_roundtrip_word32le (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U3
   (m, r)
 }
 
+(** Structural lemma: varint_enc → varint_dec roundtrips.  SMTPat-triggered so
+    SMT applies it whenever it sees [varint_decode_expected i (nbytes_of_varint v) s]
+    — exactly the goal produced by composing [encode_varint] then [decode_varint].
+    Lifts the per-length div/mod decomposition out of the hot query. *)
+noextract
+let lemma_varint_roundtrip_smtpat (v: U32.t) (s: Seq.seq U8.t) (i: U32.t)
+  : Lemma
+    (requires
+      varint_encode_pred (U32.v v) s (U32.v i) /\
+      U32.v i + nbytes_of_varint (U32.v v) <= Seq.length s)
+    (ensures
+      varint_decode_expected i (U32.uint_to_t (nbytes_of_varint (U32.v v))) s
+      == DR_Inr ({ n = U32.uint_to_t (nbytes_of_varint (U32.v v)); value = v }))
+    [SMTPat (varint_decode_expected i (U32.uint_to_t (nbytes_of_varint (U32.v v))) s)]
+  =
+  let n = U32.v v in
+  if n < 128 then ()
+  else if n < 16384 then DC.lemma_varint_2byte_arithmetic n
+  else if n < 2097152 then DC.lemma_varint_3byte_arithmetic n
+  else if n < 268435456 then DC.lemma_varint_4byte_arithmetic n
+  else DC.lemma_varint_5byte_arithmetic n
+
 (** lemma_pulse_roundtrip_varint. *)
 fn lemma_pulse_roundtrip_varint (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))

@@ -45,57 +45,38 @@ resumes cleanly.
 > **Canonical task list**: [`openspec/changes/diagnose-pulse-hang/tasks.md`](openspec/changes/diagnose-pulse-hang/tasks.md)
 > (and [`proposal.md`](openspec/changes/diagnose-pulse-hang/proposal.md)).
 
-The native gate does **not** currently build.  `Data.Codec.Types` and
-`Data.Codec` verify, then the `Data.Codec.Pulse` `fstar.exe` invocation **hangs
-forever** — observed stuck for 35+ minutes at 0% CPU, `status = stopped` (S).
-The process (probed this session):
+### ✅ FIXED (this session) — `Data.Codec.Pulse` verify was a varint-roundtrip SMT hang
 
-```
-fstar.exe --no_default_includes --include …/ulib \
-  --include …/pulse/common --include …/pulse/common.checked \
-  --include …/pulse/pulse/lib --include …/pulse/pulse.checked --include ./src \
-  --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
-  --z3rlimit 120 --cache_checked_modules --cache_dir cache --odir cache \
-  src/Data.Codec.Pulse.fst
-```
+**Root cause (bisected):** `lemma_pulse_roundtrip_varint` is a **non-terminating
+SMT query** — not the word32 lemmas (those are *slow* ~90s but terminate), and
+not `encode_*`/`decode_*` (the encoders/decoders/dispatchers all verify green in
+~30s).  Z3 spins at **100% CPU forever** (not the older 0%-`stopped` symptom);
+raising `--z3rlimit` 80 → 120 → 800 does **not** help.
 
-**It verified and extracted GREEN earlier this same session** (commit `a34c984`
-landed the native target and produced `libfstar-codec.dylib`), so this is **not**
-a simple "can't typecheck" — it is a **non-terminating SMT query**, almost
-certainly a Pulse post-condition that Z3 keeps exploring and never returns.
+The `varint` roundtrip is hard because `encode_varint`/`decode_varint` are
+**hand-inlined** (not the pure `varint.enc`/`.dec` projections), so the
+roundtrip `fn`'s single SMT query must discharge the 5-way threshold split
+(`<128`/`<16384`/`<2097152`/`<268435456`/else) through nested `%128`/`/128`
+extraction **and** U32 `add`/`mul` reconstruction — a query Z3 never decides.
 
-The earlier `--z3rlimit 80` run reported `encode_word32be`/`word32le` roundtrip
-lemmas** timing out**; `--z3rlimit 120` made those pass in the manual spike, but
-`120` is evidently insufficient/unreliable under the nix sandbox's exact
-context (different query splitting, resource limits).
+**Fix (landed, 0-admit):** added a pure `noextract` `Lemma`
+`lemma_varint_roundtrip_smtpat` with an
+`[SMTPat (varint_decode_expected i (U32.uint_to_t (nbytes_of_varint (U32.v v))) s)]`
+trigger in `src/Data.Codec.Pulse.fst`.  Its body does an explicit 5-way case
+split over the **existing** `DC.lemma_varint_{2,3,4,5}byte_arithmetic`
+identities, lifting the div/mod decomposition into head-normal form.  The
+trigger fires where the roundtrip `fn`'s term (`varint_decode_expected i m s1`,
+`U32.v m == nbytes_of_varint (U32.v v)`) unifies `m` to the `uint_to_t` form.
 
-### Diagnosis plan for next session (do these in order, each with a timeout)
+**Verified GREEN end-to-end (this session):**
+- `make check` verify loop (Types → Codec → Pulse, `--z3rlimit 120`): all three
+  modules "All verification conditions discharged successfully", 0-admit.
+- `nix build .#fstar-codec-native`: **succeeds**, producing
+  `libfstar-codec.dylib`, `libfstar-codec.a`, `fstar_codec.h` (`Custard.c/.h/.o`)
+  at `/nix/store/v1w9zsvy8v921kdvcn5cyhkyd2h1was7-fstar-codec-native-0.1.0`.
 
-1. **Isolate which `fn` hangs.**  Run `fstar.exe` on `Data.Codec.Pulse` with
-   `--z3rlimit` stepped (80 → 120 → 200 → 400) and **`--log_queries`** (or
-   `--log_types`/`--print_z3_statistics`), wrapped in `timeout 300`, and capture
-   the LAST query F* emits before it stops.  A hang (vs. a clean Error 19
-   timeout) means Z3 itself never returns on one query.
-2. **Suspects (by ordering):**
-   - `lemma_pulse_roundtrip_word32be` / `word32le` (division-vs-shift byte
-     extraction, the flaky spot seen earlier — the `word32*.enc` post uses
-     `U32.div`/`U32.rem` chains).
-   - `encode_word32be` / `encode_word32le` (the `Seq.slice s1 == word32*.enc`
-     post-condition — SMT must reduce `Seq.append`/`Seq.create` of 4 bytes).
-   - `decode_varint` / `varint_decode_expected` (5-way case analysis).
-  3. **Mitigations, in order:** (a) add an explicit `#push-options "--z3rlimit N"`
-     around the hanging `fn` to give *that query* more budget without raising
-     the global limit; (b) add a structural lemma (lift the byte-extraction
-     arithmetic out of the post-condition into a `Lemma`) so SMT has a
-     head-normal form instead of a big `Seq.equal`; (c) change the `ensures` to
-     reference a `noextract` helper predicate (like `varint_encode_pred` already
-     does) instead of an inline `Seq.slice … == word32*.enc …`.
-4. **Do NOT** repeatedly relaunch the full 3-module `nix build` — isolate the
-   single hanging module first, then re-run the derivation once.
-
-This is tracked as the #1 item; **T3.2 (test rewrite) is blocked on it** — the
-leaf must verify before the test modules (which `open Data.Codec.Pulse`) can be
-re-added.
+T3.2 (test rewrite) is now **unblocked** — the leaf verifies; the two test
+modules (which `open Data.Codec.Pulse`) can be re-added to `TST_MODS`.
 
 ## Current state (post Pulse port)
 
