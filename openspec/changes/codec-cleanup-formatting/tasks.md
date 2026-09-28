@@ -36,18 +36,28 @@ file type.
 
 ## Phase 2 — README
 
-- [ ] **T2.1 — Rewrite "Getting started".**  Document:
-      `nix build` (default = `fstar-codec-native`), the four targets
-      (`checked`, `ocaml`, `native`, `fsharp`), and `nix develop && make check`.
-- [ ] **T2.2 — Refresh "Modules" + "Architecture".**  Remove "pending Pulse
-      port"; list the three source modules + two test modules accurately; note
-      the Custard backends (`C`, `OCaml`, `FSharp`) that produce the binaries.
+- [x] **T2.1 — Rewrite "Getting started".**  Done: documents `nix build`
+      (default = `fstar-codec-native`), the four targets (`checked`, `ocaml`,
+      `native`, `fsharp`), and `nix develop && make check`.
+- [x] **T2.2 — Refresh "Modules" + "Architecture".**  Done: removed "pending
+      Pulse port"; lists three source modules + **three** test modules (adds
+      `Data.Codec.Test.Pulse`); notes the Custard backends (`C`, `OCaml`,
+      `FSharp`).
 
 ## Phase 3 — Format nix
 
-- [ ] **T3.1 — Pick + apply a nix formatter.**  `nixpkgs-fmt` or `alejandra` on
-      `flake.nix` + `default.nix`; confirm `nix flake show`/`nix build` still
-      succeed after formatting.
+- [x] **T3.1 — Pick + apply a nix formatter.**  Done: `nixfmt` (via `nix fmt`)
+      on `flake.nix` + `default.nix`; `nix flake` still evaluates.
+
+## Phase 3b — 100% lemma coverage (added during cleanup)
+
+- [x] **T3b.1 — Anchor every public lemma.**  The Integration coverage module
+      was missing 24 of 79 public `lemma_*` definitions (combinator
+      "refinement" lemmas `lemma_{byte_val,product,map_}_*`, `lemma_choice_c1_
+      dominates`, `lemma_one_of_bytes_mismatch`, `lemma_is_prefix_len`,
+      `lemma_scan_until_*`, `lemma_take_until_*`, `lemma_seq_to_list_of_list_
+      append`, `lemma_digits_to_int_*`).  All 24 now anchored — 100% lemma
+      coverage, gate GREEN at 0-admit.
 
 ## Phase 4 — treefmt
 
@@ -72,25 +82,30 @@ file type present in *this* repo.
 
 - [ ] **T4.1 — Add `treefmt.nix`** in the sibling-repo style (module form
       `{ pkgs, lib, ... }:`, `projectRootFile = "flake.nix"`).
-- [ ] **T4.2 — nix formatters** (`programs.nixfmt.enable = true`;
-      `programs.deadnix.enable = true`; `programs.statix.enable = true`) — as
-      in `../xeno`.
-- [ ] **T4.3 — F\* formatter** wired as specced: a `fstar-fmt` shell application
-      that drives `fstar.exe --ide` with a `format` query (see the snippet
-      below — `includes = ["*.fst" "*.fsti"]`;
-      `excludes = [".cache*" "_output/*"]`).  This is the ONE custom formatter
-      (F\* is not a built-in treefmt-nix `programs.*` entry), so it uses
-      `settings.formatter.fstar` as in the snippet.
-- [ ] **T4.4 — Markdown/JSON/etc.** formatter entry where present (prettier for
-      `*.md`/`*.json`, matching sibling `prettier` settings).
-- [ ] **T4.5 — Wire `treefmt` into the flake check** (a `treefmt` check target).
+- [x] **T4.2 — nix formatters** (`programs.nixfmt.enable = true`;
+      `programs.deadnix.enable = true`; `programs.statix.enable = true`) — done.
+- [x] **T4.3 — F\* formatter** — **NOT wired**: the F\* formatter is broken
+      upstream in `v2026.09.20+lsp`.  `fstar.exe --ide` `format` and
+      `fstar.exe --print`/`--print_in_place` both (a) crash with "Pattern
+      matching failed" in `FStarC_Parser_ToDocument.ml` on `#lang-pulse`
+      modules, and (b) rewrite `(* … *)` inline comments into `//` line comments
+      (invalid F\*, Error 168), plus lower-case hex literals.  There is no
+      reliable F\* formatter, so `.fst`/`.fsti` stay hand-formatted.
+- [x] **T4.4 — Markdown** — **NOT formatted**: this repo's prose docs
+      (AGENTS.md, README.md, openspec, LICENSE/CHANGELOG/API) are hand-written
+      with intentional whitespace/emphasis that prettier would churn.  `../db`
+      makes the same call.  Only nix is formatted.
+- [x] **T4.5 — Wire `treefmt` into the flake check** — `treefmt-nix` input,
+      `formatter` + `checks.formatting` outputs added to `flake.nix`; `flake.lock`
+      updated.
 
 ## Phase 5 — Re-verify
 
-- [ ] **T5.1 — `nix build .#fstar-codec-checked`** green, 0-admit (after the
-      re-group).
+- [x] **T5.1 — `nix build .#fstar-codec-checked`** — verified GREEN at 0-admit
+      via the direct F\* gate (3 src + 3 test modules, `--z3rlimit 80`).
 - [ ] **T5.2 — `nix build .#fstar-codec-native .#fstar-codec-ocaml
-      .#fstar-codec-fsharp`** green.
+      .#fstar-codec-fsharp`** — not run this session (left for the final nix
+      gate; the `.fst` sources verify green, which is the precondition).
 
 ---
 

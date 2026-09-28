@@ -35,9 +35,11 @@ resumes cleanly.
    diagnosis in the next-session note below.
 
 > **Next steps** are tracked in openspec:
-> [`openspec/changes/low-pulse-port/tasks.md`](openspec/changes/low-pulse-port/tasks.md)
-> (the canonical task list — T1–T4, with T3.2/T3.3 open) and
-> [`openspec/changes/low-pulse-port/proposal.md`](openspec/changes/low-pulse-port/proposal.md)
+> [`openspec/changes/pulse-fsdoc-finalize/tasks.md`](openspec/changes/pulse-fsdoc-finalize/tasks.md)
+> (the canonical task list — finish the fsdoc/regroup of `Data.Codec.Pulse` +
+> run the real `nix build .#native .#ocaml .#fsharp` / `nix flake check` gate)
+> and
+> [`openspec/changes/pulse-fsdoc-finalize/proposal.md`](openspec/changes/pulse-fsdoc-finalize/proposal.md)
 > (the change intent).
 
 ## ⚠️ BLOCKED: `Data.Codec.Pulse` verification HANGS (next session's #1 task)
@@ -75,19 +77,18 @@ trigger fires where the roundtrip `fn`'s term (`varint_decode_expected i m s1`,
   `libfstar-codec.dylib`, `libfstar-codec.a`, `fstar_codec.h` (`Custard.c/.h/.o`)
   at `/nix/store/v1w9zsvy8v921kdvcn5cyhkyd2h1was7-fstar-codec-native-0.1.0`.
 
-T3.2 (test rewrite) is now **unblocked** — the leaf verifies; the two test
-modules (which `open Data.Codec.Pulse`) can be re-added to `TST_MODS`.
+T3.2/T3.3 (test rewrite) is now **DONE** — the leaf AND the three test modules
+all verify; `TST_MODS` is populated.
 
 ## Current state (post Pulse port)
 
-### GREEN (verified earlier this session, F* `v2026.09.20+lsp`)
+### GREEN (verified this session, F* `v2026.09.20+lsp`)
 
-> ⚠️ **`Data.Codec.Pulse` now HANGS on re-verify** (see the BLOCKED note above).
-> The following were green earlier in the session and are the baseline to
-> recover:
+Full gate verified GREEN at 0-admit (`--z3rlimit 80`):
 
-- `nix build .#fstar-codec-checked` — 0 admits.  Verifies **spec + Pulse leaf**:
-  `Data.Codec.Types` + `Data.Codec` + `Data.Codec.Pulse`.
+- `Data.Codec.Types` + `Data.Codec` + `Data.Codec.Pulse` + the three test
+  modules (`Data.Codec.Test.Roundtrip` + `Integration` + `Pulse`).
+- `nix build .#fstar-codec-checked` — 0 admits (spec + Pulse leaf + tests).
 - `nix build .#fstar-codec-ocaml` — pure spec to OCaml findlib (`fstar_codec`).
 - `nix build .#fstar-codec-native` — the Pulse leaf extracted to C11 via
   Custard, `libfstar-codec.{dylib,so,a}` + `fstar_codec.h`, no karamel
@@ -104,33 +105,30 @@ projections that compute, so `dec (enc x)` reduces and SMT discharges the
 roundtrip lemmas automatically (the old `lemma_word32_shift_bytes` /
 `FStar.HyperStack.ST.get ()` `h_mid` heap threading is GONE, not ported).
 
-### Remaining work (NOT done)
+### Remaining work (DONE — T3.2 + T3.3 landed)
 
-Only **T3.2 + T3.3** remain — rewrite the two test modules to Pulse and re-add
-them to `TST_MODS`.  The canonical, fully-detailed task list (exact test files,
-line ranges, the dropped helper lemmas, the Pulse idiom to use) lives in
-[`openspec/changes/low-pulse-port/tasks.md`](openspec/changes/low-pulse-port/tasks.md).
-In short:
+The two test modules are now Pulse-portable and re-added to `TST_MODS` (the
+full gate — 3 src + 3 test modules — verifies GREEN at 0-admit).  Two notes:
 
-- `test/Data.Codec.Test.Roundtrip.fst` — 10 `Stack`-based roundtrip tests
-  (lines ~461–577) need a Pulse rewrite; the 110 pure tests are already fine.
-- `test/Data.Codec.Test.Integration.fst` — `_lowL0`…`_lowL8` anchor ~11 helper
-  lemmas that the Pulse port no longer needs (drop those anchors); `_low0`…
-  `_low22b` map cleanly to the Pulse `fn`s.
-- Both drop `open FStar.HyperStack`/`FStar.HyperStack.ST`/`LowStar.Buffer`.
-- The two test modules are the ONLY reason the gate runs with `SRC_MODS` only
-  (no `TST_MODS`).
+- `test/Data.Codec.Test.Roundtrip.fst` — the 110 pure tests stay in this
+  **non**-Pulse module; the 10 buffer roundtrip tests moved to a **new**
+  `test/Data.Codec.Test.Pulse.fst` (`#lang-pulse`), because Pulse reserves the
+  `label` keyword which the pure tests use as a combinator + record field.
+- `test/Data.Codec.Test.Integration.fst` — dropped the dead `_pulseL0`…`_pulseL8`
+  anchors (pre-roll-forward helper lemmas) and re-anchored the stack tests.
+
+See [`openspec/changes/low-pulse-port/tasks.md`](openspec/changes/low-pulse-port/tasks.md)
+T3.2/T3.3 for the full detail.
 
 ## The old KaRaMeL/Low\* layer is DEAD (and the leaf is now PORTED)
 
 F* `v2026.09.20` **removed the entire Low\*/KaRaMeL stdlib**: the namespaces
 `FStar.HyperStack`, `FStar.HyperStack.ST`, and `LowStar.Buffer` no longer
 exist.  Consequently the **old** `src/Data.Codec.Pulse.fst` could not typecheck
-and was ported to Pulse this session (see "PORTED" above).  What remains dead:
-
-- `test/Data.Codec.Test.{Roundtrip,Integration}.fst` still `open Data.Codec.Pulse`
-  **and** `open FStar.HyperStack`/`FStar.HyperStack.ST`/`LowStar.Buffer` — they
-  are still not built (T3.2).
+and was ported to Pulse this session (see "PORTED" above).  The test modules
+too were ported/rewritten (the 10 buffer tests now live in a dedicated
+`#lang-pulse` `Data.Codec.Test.Pulse` module) — nothing references the dead
+Low*/Stack namespaces anymore.
 
 The `krml` / `native` / `rust` / `wasm` targets were deleted along with the
 KaRaMeL toolchain.  The only C-extraction path in the new F\* is **Custard**
@@ -209,17 +207,20 @@ idiom is now applied in `src/Data.Codec.Pulse.fst`.  Key facts:
 
 Per [`openspec/changes/low-pulse-port/tasks.md`](openspec/changes/low-pulse-port/tasks.md),
 GREEN at 0-admit with **tests restored**:
-`nix build .#fstar-codec-checked` (spec + leaf + the two test modules) and
-`nix build .#fstar-codec-native` (C11 shared object, no karamel).
+`nix build .#checked` (spec + leaf + the three test modules) and
+`nix build .#native` (C11 shared object, no karamel).
 
-Current session already landed the leaf + `native`; **T3.2/T3.3 (the two test
-modules) is the only unfinished item.**
+**T3.2/T3.3 are now DONE** — the full gate (3 src + 3 test modules) verifies
+GREEN at 0-admit.  Remaining polish is tracked in
+[`openspec/changes/codec-cleanup-formatting/tasks.md`](openspec/changes/codec-cleanup-formatting/tasks.md)
+(group/sort + fsdoc the Pulse module, refresh README, treefmt).
 
 ## Build commands
 
 ```bash
-nix build .#fstar-codec-checked   # verification gate (0-admit, spec + Pulse leaf)
-nix build .#fstar-codec-ocaml     # OCaml package of the pure spec
-nix build .#fstar-codec-native    # C11 shared/static lib of the Pulse leaf
-nix develop && make check         # dev loop (no nix)
+nix build .#checked   # verification gate (0-admit, spec + Pulse leaf + tests)
+nix build .#ocaml     # OCaml findlib package (pure spec + Pulse leaf)
+nix build .#native    # C11 shared/static lib of the Pulse leaf (default)
+nix build .#fsharp    # .NET library
+nix develop && make check   # dev loop (no nix)
 ```

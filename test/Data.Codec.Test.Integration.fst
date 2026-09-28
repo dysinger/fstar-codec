@@ -93,15 +93,15 @@ let _ct49 = Data.Codec.Test.Roundtrip.test_digits_to_int_failure
 let _ct50 = Data.Codec.Test.Roundtrip.test_label_error_propagation
 let _ct51 = Data.Codec.Test.Roundtrip.test_decode_truncated_word16le
 let _ct52 = Data.Codec.Test.Roundtrip.test_decode_truncated_word32le
-let _ct53 = Data.Codec.Test.Roundtrip.test_stack_token_roundtrip
-let _ct54 = Data.Codec.Test.Roundtrip.test_stack_uint8_roundtrip
-let _ct55 = Data.Codec.Test.Roundtrip.test_stack_byteval_roundtrip
-let _ct56 = Data.Codec.Test.Roundtrip.test_stack_word16be_roundtrip
-let _ct57 = Data.Codec.Test.Roundtrip.test_stack_word32be_roundtrip
-let _ct58 = Data.Codec.Test.Roundtrip.test_stack_word16le_roundtrip
-let _ct59 = Data.Codec.Test.Roundtrip.test_stack_word32le_roundtrip
-let _ct60 = Data.Codec.Test.Roundtrip.test_stack_varint_roundtrip
-let _ct61 = Data.Codec.Test.Roundtrip.test_stack_varint_overflow
+let _ct53 = Data.Codec.Test.Pulse.test_stack_token_roundtrip
+let _ct54 = Data.Codec.Test.Pulse.test_stack_uint8_roundtrip
+let _ct55 = Data.Codec.Test.Pulse.test_stack_byteval_roundtrip
+let _ct56 = Data.Codec.Test.Pulse.test_stack_word16be_roundtrip
+let _ct57 = Data.Codec.Test.Pulse.test_stack_word32be_roundtrip
+let _ct58 = Data.Codec.Test.Pulse.test_stack_word16le_roundtrip
+let _ct59 = Data.Codec.Test.Pulse.test_stack_word32le_roundtrip
+let _ct60 = Data.Codec.Test.Pulse.test_stack_varint_roundtrip
+let _ct61 = Data.Codec.Test.Pulse.test_stack_varint_overflow
 let _ct62 = Data.Codec.Test.Roundtrip.test_is_digit_byte_0x30
 let _ct63 = Data.Codec.Test.Roundtrip.test_is_digit_byte_0x47
 let _ct64 = Data.Codec.Test.Roundtrip.test_is_upper
@@ -123,7 +123,7 @@ let _ct79 = Data.Codec.Test.Roundtrip.test_is_alpha_false
 let _ct80 = Data.Codec.Test.Roundtrip.test_is_alphanum_false
 let _ct81 = Data.Codec.Test.Roundtrip.test_is_space_or_tab_false
 let _ct82 = Data.Codec.Test.Roundtrip.test_is_whitespace_false
-let _ct83 = Data.Codec.Test.Roundtrip.test_stack_varint_dispatch_roundtrip
+let _ct83 = Data.Codec.Test.Pulse.test_stack_varint_dispatch_roundtrip
 let _ct84 = Data.Codec.Test.Roundtrip.test_custom_roundtrip
 let _ct85 = Data.Codec.Test.Roundtrip.test_then_drop_roundtrip
 let _ct86 = Data.Codec.Test.Roundtrip.test_drop_then_roundtrip
@@ -344,20 +344,10 @@ let _cp14 = char_is_printable
 let _cp15 = digit_byte
 
 
-(* ── Pulse.fst lemmas ── *)
-let _pulseL0 = Data.Codec.Pulse.lemma_pow2_32
-let _pulseL0b = Data.Codec.Pulse.lemma_buffer_length_bound
-let _pulseL1 = Data.Codec.Pulse.lemma_decode_guard_implies_len_pos
-let _pulseL2 = Data.Codec.Pulse.lemma_lte_add2_implies_len_ge_2
-let _pulseL3 = Data.Codec.Pulse.lemma_lte_add4_implies_len_ge_4
-let _pulseL4 = Data.Codec.Pulse.lemma_u32_add_no_overflow
-let _pulseL5 = Data.Codec.Pulse.lemma_byteval_index_from_slice
-let _pulseL6 = Data.Codec.Pulse.lemma_word32_shift_bytes
-let _pulseL7 = Data.Codec.Pulse.lemma_encode_varint_matches_pure
+(* ── Pulse.fst spec helpers (noextract pure specs) ── *)
 let _pulseL7a = Data.Codec.Pulse.varint_encode_pred
-let _pulseL7b = Data.Codec.Pulse.lemma_encode_varint_eq_buffer
-let _pulseL7c = Data.Codec.Pulse.lemma_decode_varint_roundtrip
 let _pulseL8 = Data.Codec.Pulse.varint_decode_expected
+let _pulseL8b = Data.Codec.Pulse.lemma_varint_roundtrip_smtpat
 
 (* ── Pulse.fst functions ── *)
 let _pulse0 = Data.Codec.Pulse.encode_token
@@ -387,5 +377,47 @@ let _pulse21 = Data.Codec.Pulse.lemma_pulse_roundtrip_word16le
 let _pulse22 = Data.Codec.Pulse.lemma_pulse_roundtrip_word32le
 let _pulse22a = Data.Codec.Pulse.lemma_pulse_roundtrip_uint8
 let _pulse22b = Data.Codec.Pulse.lemma_pulse_roundtrip_varint
+
+(* ── Combinator refinement lemmas (100% lemma coverage) ── *)
+
+(* byte_val *)
+let _rv0 = lemma_byte_val_wfcv_eq
+let _rv1 = lemma_byte_val_wfcv_prop_eq
+let _rv2 = lemma_byte_val_rest_cond_eq
+
+(* product *)
+let _rp0 = lemma_product_wfcv_eq
+let _rp1 = lemma_product_wfcv_prop_eq
+let _rp2 = lemma_product_rest_cond_eq
+let _rp3 = lemma_product_enc_eq
+let _rp4 = lemma_product_dec_eq
+
+(* map_ *)
+let _rm0 = lemma_map_wfcv_eq
+let _rm1 = lemma_map_wfcv_prop_eq
+let _rm2 = lemma_map_rest_cond_eq
+let _rm3 = lemma_map_enc_eq
+let _rm4 = lemma_map_dec_eq
+
+(* digits_to_int *)
+let _rd0 = lemma_digits_to_int_wfcv_eq
+let _rd1 = lemma_digits_to_int_rest_cond_eq
+
+(* choice (c2 is anchored above as _dc10) *)
+let _rc0 = lemma_choice_c1_dominates
+
+(* one_of *)
+let _ro0 = lemma_one_of_bytes_mismatch
+
+(* is_prefix_of / scan_until / take_until *)
+let _ri0 = lemma_is_prefix_len
+let _ri1 = lemma_scan_until_content_le_len
+let _ri2 = lemma_scan_until_split_exact
+let _ri3 = lemma_scan_until_found_bound
+let _ri4 = lemma_take_until_dec_err_bound
+let _ri5 = lemma_take_until_dec_consumed_bound
+
+(* seq *)
+let _rq0 = lemma_seq_to_list_of_list_append
 
 #pop-options

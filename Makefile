@@ -39,8 +39,8 @@ FSTAR_FLAGS = --no_default_includes \
 # Source modules in DEPENDENCY ORDER (leaf modules first).
 #
 # Data.Codec.Pulse is back in: it was rewritten in Pulse (see AGENTS.md) and
-# verifies/extracts via Custard.  The two test modules still `open` the old
-# old Low*/Stack surface and are excluded pending their Pulse rewrite (T3.2).
+# verifies/extracts to C11/OCaml/F# (Custard).  The three test modules (Roundtrip pure +
+# Integration anchors + Pulse buffer roundtrips) are wired into TST_MODS below.
 SRC_MODS := Data.Codec.Types Data.Codec Data.Codec.Pulse
 
 # Pulse-only modules skip re-verification (they ship pre-verified in the F*
@@ -56,8 +56,9 @@ ALREADY_CACHED := Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore
 # the `check` prerequisite MUST use the raw module name, not `subst .,_`.
 # (`subst .,_` here would look for Data_Codec.fst.checked, which F* never
 # writes, leaving `make check` permanently out-of-date.)
-# Tests are also excluded for now (they `open Data.Codec.Pulse`).
-TST_MODS :=
+# Test modules: the two coverage/roundtrip modules plus the Pulse buffer
+# roundtrip tests (the 10 Stack-based tests, ported to Pulse — see AGENTS.md).
+TST_MODS := Data.Codec.Test.Roundtrip Data.Codec.Test.Integration Data.Codec.Test.Pulse
 
 check: $(addprefix $(OUT)/checked/,$(addsuffix .fst.checked,$(SRC_MODS))) \
        $(addprefix $(OUT)/checked/,$(addsuffix .fst.checked,$(TST_MODS)))
@@ -88,6 +89,7 @@ $(OUT)/checked/%.fst.checked: test/%.fst
 	@echo "=== $* ==="
 	$(FSTAR) $(FSTAR_FLAGS) --include ./test \
 	  --z3rlimit 80 \
+	  --already_cached $(ALREADY_CACHED) \
 	  --cache_checked_modules --cache_dir $(OUT)/checked \
 	  --odir $(OUT)/checked $<
 

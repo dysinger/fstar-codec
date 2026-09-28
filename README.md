@@ -58,7 +58,7 @@ compile to C for use at the byte-buffer level.
 - **Proven roundtrips.**  Every combinator carries a lemma; no `admit`, no
   `assume`, no `admit_smt_queries`.
 - **C extraction.**  The Pulse leaf codecs extract to C with byte-level
-  post-conditions (via Custard `--custard_backend C`, no KaRaMeL).
+  post-conditions (no KaRaMeL).
 - **A real test suite.**  120 roundtrip and error-path tests, all verified.
 
 ## Modules
@@ -67,53 +67,55 @@ compile to C for use at the byte-buffer level.
 |--------|------|
 | `Data.Codec.Types` | The `codec a` record, the base combinators, their lemmas. |
 | `Data.Codec` | Derived combinators, operator aliases, character predicates. |
-| `Data.Codec.Pulse` | C-extractable leaf codecs (8 types), buffer I/O. *(pending Pulse port)* |
+| `Data.Codec.Pulse` | C-extractable leaf codecs (8 types), buffer I/O, roundtrip lemmas. |
 
 Test modules (verified, not extracted):
 
 | Module | Role |
 |--------|------|
-| `Data.Codec.Test.Roundtrip` | Roundtrip and error-path property tests. |
+| `Data.Codec.Test.Roundtrip` | Pure roundtrip and error-path property tests. |
+| `Data.Codec.Test.Pulse` | Buffer-based roundtrip + error tests for the Pulse leaf. |
 | `Data.Codec.Test.Integration` | Binds every test + lemma, enforcing coverage. |
 
 ## Getting started
 
 ```bash
-# Build: verify the pure spec modules (the 0-admit gate).
+# Default: build the native (C11) shared/static library of the Pulse leaf.
 nix build
 
-# Individual targets
-nix build .#fstar-codec-checked   # F* verification (Data.Codec.Types + Data.Codec)
-nix build .#fstar-codec-ocaml     # OCaml package of the pure spec
+# The four targets
+nix build .#checked    # F* verification gate (0-admit: spec + leaf + tests)
+nix build .#ocaml      # OCaml findlib package of the pure spec + Pulse leaf
+nix build .#native     # C11 shared/static lib (default)
+nix build .#fsharp     # .NET library
 
 # Dev loop (no nix): verify via the Makefile
 nix develop && make check
 ```
 
 `nix build` with no argument builds the default package,
-`fstar-codec-checked`.  The authoritative verification gate is
-`nix build .#fstar-codec-checked`; the LSP is a dev-loop aid, not a substitute.
+`native` (the C11 shared/static library).  The authoritative verification gate
+is `nix build .#checked`; the LSP is a dev-loop aid, not a substitute.
 
-The build is two layers:
+The build is three layers:
 
 | File | Responsibility | Works without flakes? |
 |------|----------------|-----------------------|
-| `flake.nix` | inputs/outputs + `devShell` only | no (needs flakes) |
-| `default.nix` | builds `check` / `ocaml` | yes (`nix-build` / `import`) |
+| `flake.nix` | inputs/outputs + `devShell` | no (needs flakes) |
+| `default.nix` | builds `checked` / `ocaml` / `native` / `fsharp` | yes (`nix-build` / `import`) |
 | `Makefile` | the shell-script verify (module order) | yes (plain `fstar` on PATH) |
 
 Toolchain: F\* `v2026.09.20+lsp` (a fork pin carrying the LSP server).  The
-former KaRaMeL/`.krml`/`rust`/`wasm` targets were removed; the only C backend
-in the new F\* is Custard (`--codegen Custard --custard_backend C`), which
-extracts Pulse rather than KaRaMeL Low\*.  `Data.Codec.Pulse` is the Pulse
-leaf (8 leaf codecs + dispatch + roundtrip lemmas).
+former KaRaMeL/`.krml`/`rust`/`wasm` targets were removed.  `Data.Codec.Pulse`
+is the Pulse leaf (8 leaf codecs + dispatch + roundtrip lemmas) that compiles
+to C11, OCaml, and F#.
 
 ## Architecture
 
 ```
 Data.Codec.Types     — codec record, 19 base combinators, all lemmas
 Data.Codec           — derived combinators, operator aliases, char predicates
-Data.Codec.Pulse     — C-extractable leaf codecs (Pulse fn, Custard C output)
+Data.Codec.Pulse     — C-extractable leaf codecs (Pulse fn, C/OCaml/F# output)
 ```
 
 ## License

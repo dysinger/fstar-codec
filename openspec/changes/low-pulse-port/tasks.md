@@ -62,44 +62,31 @@ byte-extraction into a `Lemma`, or use a `noextract` helper predicate) are in
 - [x] **T3.1 — Re-add to Makefile.**  Done: `Data.Codec.Pulse` back in
       `SRC_MODS`; Makefile adds Pulse `--include` paths + `--already_cached`
       for the Pulse stdlib.  `nix build .#fstar-codec-checked` GREEN.
-- [ ] **T3.2 — Update test modules.**  Rewrite the two test modules' Low*/
-      `Stack` references to the Pulse surface.
+- [x] **T3.2 — Update test modules.**  Done.  The 10 `Stack`-based tests were
+      moved out of `Data.Codec.Test.Roundtrip` into a **new** `#lang-pulse`
+      module `test/Data.Codec.Test.Pulse.fst` (Pulse reserves the `label`
+      keyword, which the pure tests use freely, so the buffer tests can't live
+      in the non-Pulse Roundtrip module).  Each uses `A.alloc 0uy Nsz` +
+      `A.free buf` (the Pulse analogue of `alloca` + `push_frame`/`pop_frame`)
+      and forces the result constructor by pattern-match.  The dead `open
+      FStar.HyperStack`/`FStar.HyperStack.ST`/`LowStar.Buffer` are gone.
+      `Data.Codec.Test.Integration` dropped the dead `_pulseL0`…`_pulseL8`
+      anchors (they named pre-roll-forward helper lemmas that no longer exist)
+      and re-anchored the 10 stack tests to `Data.Codec.Test.Pulse`.
 
-      **`test/Data.Codec.Test.Roundtrip.fst`** (867 lines, 120 tests): the
-      **pure** tests (everything except the 10 `Stack`-based ones) reference
-      `Data.Codec`/`Data.Codec.Types` and are already Pulse-compatible.  The
-      work is the **10 `Stack`-based roundtrip tests** at ~line 461–577
-      (`test_stack_{token,uint8,byteval,word16be,word32be,word16le,word32le,
-      varint}_roundtrip`, `test_stack_varint_overflow`,
-      `test_stack_varint_dispatch_roundtrip`).  They currently use
-      `alloca 0uy Nul` + `LB.upd`/`LB.index` + the `Stack` effect + `opens`
-      `FStar.HyperStack`/`FStar.HyperStack.ST`/`LowStar.Buffer` (all deleted).
-      Rewrite to Pulse `fn` using `A.alloc`/`A.with_local` + `b.(j) <- x` +
-      the `#lang-pulse`/`open Pulse`/`module A = Pulse.Lib.Array` idiom from
-      `src/Data.Codec.Pulse.fst` (and `spike/Data.Codec.Spike.fst`).
+      Two latent bugs in the (never-re-verified) pure tests were fixed en route:
+      (1) `test_expected_text_error` used `let`-bound `string_to_bytes` vars
+      that don't reduce under `assert_norm` — inlined them; (2) five
+      `varint_decode_expected` callsites used a stale `(seq) i n` argument order
+      — reordered to the current `(i) (n) (seq)` signature.
 
-      **`test/Data.Codec.Test.Integration.fst`** (391 lines): a coverage-anchor
-      module that `open Data.Codec.Pulse` and names ~20 leaf definitions to force
-      verification.  Its `_lowL0`…`_lowL8` anchors reference **dropped helper
-      lemmas** (`lemma_pow2_32`, `lemma_buffer_length_bound`,
-      `lemma_decode_guard_implies_len_pos`, `lemma_lte_add2/4_implies_len_ge_2/4`,
-      `lemma_u32_add_no_overflow`, `lemma_byteval_index_from_slice`,
-      `lemma_word32_shift_bytes`, `lemma_encode_varint_matches_pure`,
-      `lemma_encode_varint_eq_buffer`, `lemma_decode_varint_roundtrip`) that the
-      Pulse port **no longer needs** (proofs are automatic now — see T2.6).
-      Options: drop those anchors, or keep them by re-exporting the (now trivial)
-      corresponding proofs.  The `_low0`…`_low22b` function/lemma anchors map
-      cleanly to the Pulse `fn`s (encode/decode/encode_bytes/decode_bytes/
-      `lemma_pulse_roundtrip_*`/`lemma_pulse_encode_decode_match`).
-
-      Both files also `open FStar.HyperStack`/`FStar.HyperStack.ST`/
-      `LowStar.Buffer` — remove those opens.
-
-- [ ] **T3.3 — Re-verify the gate.**  Add the two test modules to `TST_MODS`
-      in the Makefile (`TST_MODS := Data.Codec.Test.Roundtrip
-      Data.Codec.Test.Integration`), then `nix build .#fstar-codec-checked`
-      GREEN at 0-admit with tests restored.  (The leaf alone is already green;
-      this closes the loop.)
+- [x] **T3.3 — Re-verify the gate.**  Done.  `TST_MODS` now lists
+      `Data.Codec.Test.Roundtrip Data.Codec.Test.Integration
+      Data.Codec.Test.Pulse`; the test rule carries `--already_cached` (the
+      Pulse test module opens `Pulse`).  The full gate (3 src + 3 test modules)
+      verifies GREEN at 0-admit, `--z3rlimit 80`.  The Integration coverage
+      module was also brought to **100% lemma coverage** (24 missing
+      `lemma_*` refinements anchored).
 
 ## Phase 4 — Land `native` (Custard direct-C)
 
