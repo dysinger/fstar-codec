@@ -6,7 +6,7 @@ Data.Codec.Test.Roundtrip — Concrete roundtrip and error-path tests.
 
 120 concrete tests with ZERO admits.  Each test calls encode, decode,
 and asserts the expected result.  Uses both pure combinators and Stack-based
-buffer I/O for the Low* leaf codecs.
+buffer I/O for the Pulse leaf codecs.
 
 @header Data.Codec.Test.Roundtrip
 
@@ -17,7 +17,7 @@ buffer I/O for the Low* leaf codecs.
 - Boundary values for word32 (0, max)
 - All 19 combinators: roundtrip + error paths
 - Derived combinators: choice, then_drop, drop_then, between, optional, take
-- Stack-based roundtrip for all 8 Low* leaf types + dispatch
+- Stack-based roundtrip for all 8 Pulse leaf types + dispatch
 - Character predicates (byte + char, positive + negative)
 - Varint overflow and truncation at every byte boundary
 - Label error propagation
@@ -29,7 +29,7 @@ module Data.Codec.Test.Roundtrip
 
 open Data.Codec
 open Data.Codec.Types
-open Data.Codec.Low
+open Data.Codec.Pulse
 open FStar.Seq
 open FStar.UInt8
 open FStar.UInt32
@@ -308,7 +308,7 @@ let test_bytes_partial_match_error () : Lemma
 /// The pure varint decoder accepts 5-byte encodings with b4 > 15,
 /// producing values >= b4*128^4 = 16*268435456 = 4294967296.
 /// With all continuation bytes maxed (0xFF each), value = 4563402751.
-/// The Low* decoder (Data.Codec.Low.decode_varint) rejects b4 > 15
+/// The Pulse decoder (Data.Codec.Pulse.decode_varint) rejects b4 > 15
 /// via EC_Overflow — tested separately in test_varint_low_overflow.
 #push-options "--z3rlimit 80"
 let test_varint_5byte_oversized () : Lemma
@@ -320,18 +320,18 @@ let test_varint_5byte_oversized () : Lemma
     ()
 #pop-options
 
-/// Low* overflow test: varint_decode_expected (the pure spec of decode_varint)
+/// Pulse overflow test: varint_decode_expected (the pure spec of decode_varint)
 /// returns EC_Overflow for 5-byte input with b4 > 15.  Since decode_varint's
 /// ensures clause equates its result to varint_decode_expected, this lemma
-/// validates the Low* overflow path without requiring Stack buffer allocation.
+/// validates the Pulse overflow path without requiring Stack buffer allocation.
 ///
 /// The 5th byte is 0x10uy: U8.v 0x10uy % 128 = 16 > 15, triggering EC_Overflow.
 /// Explicit assert_norm proves this structurally rather than via SMT alone.
 let test_varint_low_overflow () : Lemma
-  (ensures Data.Codec.Low.varint_decode_expected
+  (ensures Data.Codec.Pulse.varint_decode_expected
     (seq_of_list [0xFFuy; 0xFFuy; 0xFFuy; 0xFFuy; 0x10uy])
     0ul 5ul
-    == Data.Codec.Low.DR_Inl ({code=Data.Codec.Low.EC_Overflow; pos=0ul}))
+    == Data.Codec.Pulse.DR_Inl ({code=Data.Codec.Pulse.EC_Overflow; pos=0ul}))
   = assert_norm (0x10 % 128 = 16);
     assert (16 > 15);
     ()
@@ -351,56 +351,56 @@ let test_decode_byteval_empty () : Lemma
 /// varint_decode_expected truncated 2-byte: b0 has continuation bit set
 /// but only 1 byte of input provided.
 let test_varint_truncated_2byte () : Lemma
-  (ensures Data.Codec.Low.varint_decode_expected
+  (ensures Data.Codec.Pulse.varint_decode_expected
     (seq_of_list [0x80uy])
     0ul 1ul
-    == Data.Codec.Low.DR_Inl ({code=Data.Codec.Low.EC_UnexpectedEndOfInput; pos=0ul}))
-  = let result = Data.Codec.Low.varint_decode_expected (seq_of_list [0x80uy]) 0ul 1ul in
-    assert (Data.Codec.Low.DR_Inl? result);
-    let Data.Codec.Low.DR_Inl err = result in
-    assert (err.code == Data.Codec.Low.EC_UnexpectedEndOfInput);
+    == Data.Codec.Pulse.DR_Inl ({code=Data.Codec.Pulse.EC_UnexpectedEndOfInput; pos=0ul}))
+  = let result = Data.Codec.Pulse.varint_decode_expected (seq_of_list [0x80uy]) 0ul 1ul in
+    assert (Data.Codec.Pulse.DR_Inl? result);
+    let Data.Codec.Pulse.DR_Inl err = result in
+    assert (err.code == Data.Codec.Pulse.EC_UnexpectedEndOfInput);
     assert (err.pos == 0ul);
     ()
 
 /// varint_decode_expected truncated 3-byte: b0 and b1 have continuation bits
 /// set but only 2 bytes of input provided.
 let test_varint_truncated_3byte () : Lemma
-  (ensures Data.Codec.Low.varint_decode_expected
+  (ensures Data.Codec.Pulse.varint_decode_expected
     (seq_of_list [0x80uy; 0x80uy])
     0ul 2ul
-    == Data.Codec.Low.DR_Inl ({code=Data.Codec.Low.EC_UnexpectedEndOfInput; pos=0ul}))
-  = let result = Data.Codec.Low.varint_decode_expected (seq_of_list [0x80uy; 0x80uy]) 0ul 2ul in
-    assert (Data.Codec.Low.DR_Inl? result);
-    let Data.Codec.Low.DR_Inl err = result in
-    assert (err.code == Data.Codec.Low.EC_UnexpectedEndOfInput);
+    == Data.Codec.Pulse.DR_Inl ({code=Data.Codec.Pulse.EC_UnexpectedEndOfInput; pos=0ul}))
+  = let result = Data.Codec.Pulse.varint_decode_expected (seq_of_list [0x80uy; 0x80uy]) 0ul 2ul in
+    assert (Data.Codec.Pulse.DR_Inl? result);
+    let Data.Codec.Pulse.DR_Inl err = result in
+    assert (err.code == Data.Codec.Pulse.EC_UnexpectedEndOfInput);
     assert (err.pos == 0ul);
     ()
 
 /// varint_decode_expected truncated 4-byte: b0,b1,b2 have continuation bits
 /// set but only 3 bytes of input provided.
 let test_varint_truncated_4byte () : Lemma
-  (ensures Data.Codec.Low.varint_decode_expected
+  (ensures Data.Codec.Pulse.varint_decode_expected
     (seq_of_list [0x80uy; 0x80uy; 0x80uy])
     0ul 3ul
-    == Data.Codec.Low.DR_Inl ({code=Data.Codec.Low.EC_UnexpectedEndOfInput; pos=0ul}))
-  = let result = Data.Codec.Low.varint_decode_expected (seq_of_list [0x80uy; 0x80uy; 0x80uy]) 0ul 3ul in
-    assert (Data.Codec.Low.DR_Inl? result);
-    let Data.Codec.Low.DR_Inl err = result in
-    assert (err.code == Data.Codec.Low.EC_UnexpectedEndOfInput);
+    == Data.Codec.Pulse.DR_Inl ({code=Data.Codec.Pulse.EC_UnexpectedEndOfInput; pos=0ul}))
+  = let result = Data.Codec.Pulse.varint_decode_expected (seq_of_list [0x80uy; 0x80uy; 0x80uy]) 0ul 3ul in
+    assert (Data.Codec.Pulse.DR_Inl? result);
+    let Data.Codec.Pulse.DR_Inl err = result in
+    assert (err.code == Data.Codec.Pulse.EC_UnexpectedEndOfInput);
     assert (err.pos == 0ul);
     ()
 
 /// varint_decode_expected truncated 5-byte: b0,b1,b2,b3 have continuation bits
 /// set but only 4 bytes of input provided.
 let test_varint_truncated_5byte () : Lemma
-  (ensures Data.Codec.Low.varint_decode_expected
+  (ensures Data.Codec.Pulse.varint_decode_expected
     (seq_of_list [0x80uy; 0x80uy; 0x80uy; 0x80uy])
     0ul 4ul
-    == Data.Codec.Low.DR_Inl ({code=Data.Codec.Low.EC_UnexpectedEndOfInput; pos=0ul}))
-  = let result = Data.Codec.Low.varint_decode_expected (seq_of_list [0x80uy; 0x80uy; 0x80uy; 0x80uy]) 0ul 4ul in
-    assert (Data.Codec.Low.DR_Inl? result);
-    let Data.Codec.Low.DR_Inl err = result in
-    assert (err.code == Data.Codec.Low.EC_UnexpectedEndOfInput);
+    == Data.Codec.Pulse.DR_Inl ({code=Data.Codec.Pulse.EC_UnexpectedEndOfInput; pos=0ul}))
+  = let result = Data.Codec.Pulse.varint_decode_expected (seq_of_list [0x80uy; 0x80uy; 0x80uy; 0x80uy]) 0ul 4ul in
+    assert (Data.Codec.Pulse.DR_Inl? result);
+    let Data.Codec.Pulse.DR_Inl err = result in
+    assert (err.code == Data.Codec.Pulse.EC_UnexpectedEndOfInput);
     assert (err.pos == 0ul);
     ()
 
@@ -458,96 +458,96 @@ let test_decode_truncated_word32le () : Lemma
 
 #pop-options
 
-(** Stack-based roundtrip tests — exercise Low* buffer code path *)
+(** Stack-based roundtrip tests — exercise Pulse buffer code path *)
 
 #push-options "--z3rlimit 40"
 
-/// Stack-based roundtrip: token encode→decode through Low* buffer.
+/// Stack-based roundtrip: token encode→decode through Pulse buffer.
 let test_stack_token_roundtrip () : Stack unit
   (requires fun _ -> True) (ensures fun _ _ _ -> True)
   = push_frame ();
     let buf = alloca 0uy 2ul in
-    let (_, result) = lemma_low_roundtrip_token 0x42ul buf 0ul 2ul in
-    assert (Data.Codec.Low.DR_Inr? result);
+    let (_, result) = lemma_pulse_roundtrip_token 0x42ul buf 0ul 2ul in
+    assert (Data.Codec.Pulse.DR_Inr? result);
     pop_frame ();
     ()
 
-/// Stack-based roundtrip: uint8 encode→decode through Low* buffer.
+/// Stack-based roundtrip: uint8 encode→decode through Pulse buffer.
 let test_stack_uint8_roundtrip () : Stack unit
   (requires fun _ -> True) (ensures fun _ _ _ -> True)
   = push_frame ();
     let buf = alloca 0uy 2ul in
-    let (_, result) = lemma_low_roundtrip_uint8 42ul buf 0ul 2ul in
-    assert (Data.Codec.Low.DR_Inr? result);
+    let (_, result) = lemma_pulse_roundtrip_uint8 42ul buf 0ul 2ul in
+    assert (Data.Codec.Pulse.DR_Inr? result);
     pop_frame ();
     ()
 
-/// Stack-based roundtrip: byte_val encode→decode through Low* buffer.
+/// Stack-based roundtrip: byte_val encode→decode through Pulse buffer.
 let test_stack_byteval_roundtrip () : Stack unit
   (requires fun _ -> True) (ensures fun _ _ _ -> True)
   = push_frame ();
     let buf = alloca 0uy 2ul in
-    let (_, result) = lemma_low_roundtrip_byteval 0x5Buy buf 0ul 2ul in
-    assert (Data.Codec.Low.DR_Inr? result);
+    let (_, result) = lemma_pulse_roundtrip_byteval 0x5Buy buf 0ul 2ul in
+    assert (Data.Codec.Pulse.DR_Inr? result);
     pop_frame ();
     ()
 
-/// Stack-based roundtrip: word16be encode→decode through Low* buffer.
+/// Stack-based roundtrip: word16be encode→decode through Pulse buffer.
 let test_stack_word16be_roundtrip () : Stack unit
   (requires fun _ -> True) (ensures fun _ _ _ -> True)
   = push_frame ();
     let buf = alloca 0uy 3ul in
-    let (_, result) = lemma_low_roundtrip_word16be 0xABCDul buf 0ul 3ul in
-    assert (Data.Codec.Low.DR_Inr? result);
+    let (_, result) = lemma_pulse_roundtrip_word16be 0xABCDul buf 0ul 3ul in
+    assert (Data.Codec.Pulse.DR_Inr? result);
     pop_frame ();
     ()
 
-/// Stack-based roundtrip: word32be encode→decode through Low* buffer.
+/// Stack-based roundtrip: word32be encode→decode through Pulse buffer.
 let test_stack_word32be_roundtrip () : Stack unit
   (requires fun _ -> True) (ensures fun _ _ _ -> True)
   = push_frame ();
     let buf = alloca 0uy 5ul in
-    let (_, result) = lemma_low_roundtrip_word32be 0xDEADBEEFul buf 0ul 5ul in
-    assert (Data.Codec.Low.DR_Inr? result);
+    let (_, result) = lemma_pulse_roundtrip_word32be 0xDEADBEEFul buf 0ul 5ul in
+    assert (Data.Codec.Pulse.DR_Inr? result);
     pop_frame ();
     ()
 
-/// Stack-based roundtrip: word16le encode→decode through Low* buffer.
+/// Stack-based roundtrip: word16le encode→decode through Pulse buffer.
 let test_stack_word16le_roundtrip () : Stack unit
   (requires fun _ -> True) (ensures fun _ _ _ -> True)
   = push_frame ();
     let buf = alloca 0uy 3ul in
-    let (_, result) = lemma_low_roundtrip_word16le 0xCDABul buf 0ul 3ul in
-    assert (Data.Codec.Low.DR_Inr? result);
+    let (_, result) = lemma_pulse_roundtrip_word16le 0xCDABul buf 0ul 3ul in
+    assert (Data.Codec.Pulse.DR_Inr? result);
     pop_frame ();
     ()
 
-/// Stack-based roundtrip: word32le encode→decode through Low* buffer.
+/// Stack-based roundtrip: word32le encode→decode through Pulse buffer.
 let test_stack_word32le_roundtrip () : Stack unit
   (requires fun _ -> True) (ensures fun _ _ _ -> True)
   = push_frame ();
     let buf = alloca 0uy 5ul in
-    let (_, result) = lemma_low_roundtrip_word32le 0xEFBEADDEul buf 0ul 5ul in
-    assert (Data.Codec.Low.DR_Inr? result);
+    let (_, result) = lemma_pulse_roundtrip_word32le 0xEFBEADDEul buf 0ul 5ul in
+    assert (Data.Codec.Pulse.DR_Inr? result);
     pop_frame ();
     ()
 
-/// Stack-based roundtrip: varint encode→decode through Low* buffer.
+/// Stack-based roundtrip: varint encode→decode through Pulse buffer.
 /// Tests 5-range varint encoding (1..5 bytes) with concrete boundary values.
 let test_stack_varint_roundtrip () : Stack unit
   (requires fun _ -> True) (ensures fun _ _ _ -> True)
   = push_frame ();
     let buf = alloca 0uy 6ul in
-    let (_, result_0) = lemma_low_roundtrip_varint 0ul buf 0ul 6ul in
-    assert (Data.Codec.Low.DR_Inr? result_0);
-    let (_, result_128) = lemma_low_roundtrip_varint 128ul buf 0ul 6ul in
-    assert (Data.Codec.Low.DR_Inr? result_128);
-    let (_, result_16384) = lemma_low_roundtrip_varint 16384ul buf 0ul 6ul in
-    assert (Data.Codec.Low.DR_Inr? result_16384);
-    let (_, result_2097152) = lemma_low_roundtrip_varint 2097152ul buf 0ul 6ul in
-    assert (Data.Codec.Low.DR_Inr? result_2097152);
-    let (_, result_268435456) = lemma_low_roundtrip_varint 268435456ul buf 0ul 6ul in
-    assert (Data.Codec.Low.DR_Inr? result_268435456);
+    let (_, result_0) = lemma_pulse_roundtrip_varint 0ul buf 0ul 6ul in
+    assert (Data.Codec.Pulse.DR_Inr? result_0);
+    let (_, result_128) = lemma_pulse_roundtrip_varint 128ul buf 0ul 6ul in
+    assert (Data.Codec.Pulse.DR_Inr? result_128);
+    let (_, result_16384) = lemma_pulse_roundtrip_varint 16384ul buf 0ul 6ul in
+    assert (Data.Codec.Pulse.DR_Inr? result_16384);
+    let (_, result_2097152) = lemma_pulse_roundtrip_varint 2097152ul buf 0ul 6ul in
+    assert (Data.Codec.Pulse.DR_Inr? result_2097152);
+    let (_, result_268435456) = lemma_pulse_roundtrip_varint 268435456ul buf 0ul 6ul in
+    assert (Data.Codec.Pulse.DR_Inr? result_268435456);
     pop_frame ();
     ()
 
@@ -563,7 +563,7 @@ let test_stack_varint_overflow () : Stack unit
     LB.upd buf 3ul 0xFFuy;
     LB.upd buf 4ul 0x10uy;
     let result = decode_varint buf 0ul 5ul in
-    assert (Data.Codec.Low.DR_Inl? result);
+    assert (Data.Codec.Pulse.DR_Inl? result);
     pop_frame ();
     ()
 
@@ -575,8 +575,8 @@ let test_stack_varint_dispatch_roundtrip () : Stack unit
     let v = 300ul in
     let written = encode_bytes CT_Varint v buf 0ul in
     let result = decode_bytes CT_Varint buf 0ul written in
-    assert (Data.Codec.Low.DR_Inr? result);
-    let Data.Codec.Low.DR_Inr r = result in
+    assert (Data.Codec.Pulse.DR_Inr? result);
+    let Data.Codec.Pulse.DR_Inr r = result in
     assert (r.value == v);
     pop_frame ();
     ()

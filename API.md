@@ -287,7 +287,7 @@ Encoding length is determined by [nbytes_of_varint] — the single source
 of truth.  Per-nbytes roundtrip lemmas ([lemma_varint_enc_dec_{1..5}byte])
 prove each length case.  Five arithmetic lemmas ([lemma_varint_{2..5}byte_arithmetic])
 provide the integer decomposition identities.
-C extraction: Low* layer provides a U32.t-bounded encoder with
+C extraction: Pulse layer provides a U32.t-bounded encoder with
 [varint_encode_pred] byte-level specification.
 
 ---
@@ -492,242 +492,40 @@ is set to [Some s].  All other fields delegate to [c].
 
 ---
 
-# Data.Codec.Low
+# Data.Codec.Pulse
 
-Data.Codec.Low — C-extractable codec layer via KaRaMeL.
-Non-recursive leaf codecs (8 types) operating on [LowStar.Buffer.buffer].
-Each encode/decode function has a full byte-level post-condition —
-no weak "modifies-only" specs.  Every function proves correspondence
-with the pure codec in [Data.Codec.Types].
-- [codec_t] — flat GADT: CT_Token, CT_ByteVal, CT_Uint8, CT_Word16BE,
-CT_Word32BE, CT_Word16LE, CT_Word32LE, CT_Varint
-- [error_code_c] — C-compatible error codes
-- [decode_result_c] — C-compatible decode result
-Eight leaf encoders, each with a Stack type and byte-level post-condition.
-Dispatch via [encode_bytes].
-Eight leaf decoders, each with a Stack type and result correspondence.
-Dispatch via [decode_bytes].  [varint_decode_expected] is the pure spec
-for [decode_varint]; the ensures clause equates the two.
-Per-codec lemmas ([lemma_low_roundtrip_*]) prove encode → decode
-preserves values through the buffer.  [lemma_low_encode_decode_match]
+Data.Codec.Pulse — C-extractable codec layer via Pulse + Custard.
+
+Non-recursive leaf codecs (8 types) operating on `Pulse.Lib.Array.array`.
+Each encode/decode function has a byte-level post-condition expressed as
+Pulse separation logic.  The pure codec spec lives in `Data.Codec.Types`;
+this module proves correspondence with it.  Written for F* v2026.09.20
+(Custard `--custard_backend C`).
+
+- `codec_t` — flat GADT: CT_Token, CT_ByteVal, CT_Uint8, CT_Word16BE,
+  CT_Word32BE, CT_Word16LE, CT_Word32LE, CT_Varint
+- `error_code_c` — C-compatible error codes
+- `decode_result_c` — C-compatible decode result
+
+Encoders (8), each a Pulse `fn` with a byte-level post-condition:
+`encode_token`, `encode_byteval`, `encode_uint8`, `encode_word16be`,
+`encode_word32be`, `encode_word16le`, `encode_word32le`, `encode_varint`;
+dispatch via `encode_bytes`.
+
+Decoders (8), each a Pulse `fn` returning `decode_result_c`:
+`decode_token`, `decode_byteval`, `decode_uint8`, `decode_word16be`,
+`decode_word32be`, `decode_word16le`, `decode_word32le`,
+`decode_varint` (whose spec is the `noextract` `varint_decode_expected`).
+Dispatch via `decode_bytes`.
+
+Roundtrip lemmas (`lemma_pulse_roundtrip_*`) prove encode → decode
+preserves values through the buffer; `lemma_pulse_encode_decode_match`
 is the dispatch-level master lemma.
-- No GADT type parameters
-- No recursive constructors
-- No function-typed constructor arguments
-- No [U32.v] in extracted code bodies
-- Custom sum types for results
-CT_Satisfy excluded: function-typed constructor breaks KaRaMeL extraction.
-CT_Bytes, CT_Text excluded: use Stack bridge (Decode.fst/Encode.fst).
 
----
-
-lemma_pow2_32: single canonical assert_norm for pow2 32 = 2^32.
-
----
-
-Factored from 5 call sites; call once to avoid SMT duplication.
-
----
-
-Lemma: off < off+len implies len > 0 in U32 arithmetic.
-
----
-
-varint_encode_pred: canonical predicate describing varint-encoded bytes.
-
----
-
-lemma_encode_varint_matches_pure, lemma_encode_varint_eq_buffer.
-
----
-
-Outer `if` guards Seq.index bounds; inner 5-range if describes bytes.
-
----
-
-lemma_word32_shift_bytes: connects shift_right byte extraction to arithmetic
-
----
-
-division.  For v: U32.t, the byte extracted by shift_right matches the pure
-
----
-
-word32 combinators' division-based extraction.
-
----
-
-Proof: SMT already knows U32.v (v >> k) == U32.v v / pow2 k axiomatically.
-
----
-
-For the 24-bit case, lemma_div_lt_nat proves v/16777216 < 256 (since
-
----
-
-v < 2^32 = 256*16777216), then small_mod proves % 256 is identity.
-
----
-
-The 16-bit and 8-bit cases are trivial: both sides are identical
-
----
-
-Called from encode_word32be/encode_word32le bodies to structurally connect
-
----
-
-Flat codec tag — 8 leaf types extractable to C.
-CT_Satisfy excluded: function-typed constructor breaks extraction.
-CT_Bytes, CT_Text excluded: use Stack bridge.
-
----
-
-Encode a single byte token into a buffer at offset. Returns 1ul.
-
----
-
-encode_varint: full byte-level post-condition describing exact bytes written.
-
----
-
-This is conservative — a 5-byte buffer is required even for small values
-
----
-
-(e.g., 0u encodes in 1 byte). The tradeoff avoids dynamic allocation:
-
----
-
-callers provide a worst-case buffer, and the actual bytes writtenritten is
-
----
-
-returned. For tighter per-call-site preconditions, use the per-range
-
----
-
-Decode functions — each with full result-level post-condition
-
----
-
-Decode an expected byte value from a buffer. Returns DR_Inr on match.
-
----
-
-WARNING: keep in sync with decode_varint body (line ~590).  Any logic change
-
----
-
-MUST update both.  The ensures clause of decode_varint equates result to
-
----
-
-varint_decode_expected; divergence causes verification failure.
-
----
-
-lemma_encode_varint_matches_pure: the bytes written by encode_varint match
-
----
-
-the pure varint.enc (U32.v v).  This bridges the division-based Low* encoder
-
----
-
-to the recursive pure spec varint_encode_go.  Proved by case analysis on the
-
----
-
-5 encoding ranges, reusing the arithmetic lemmas from Types.fst.
-
----
-
-lemma_decode_varint_roundtrip: varint_decode_expected correctly decodes
-
----
-
-bytes produced by varint.enc.  Bridges the gap between the Low* varint
-
----
-
-decoder spec (varint_decode_expected) and the pure varint codec
-
----
-
-(varint.dec).  Proved by 5-range case analysis using the arithmetic
-
----
-
-lemmas from Types.fst.  Called from lemma_low_roundtrip_varint to make
-
----
-
-Decode a variable-length integer from a buffer. Result equals varint_decode_expected.
-
----
-
-Dispatch functions — each with full per-constructor post-condition
-
----
-
-encode_bytes: dispatch on codec_t with full per-constructor byte spec.
-
----
-
-decode_bytes: dispatch on codec_t with full per-constructor result spec.
-
----
-
-lemma_encode_varint_eq_buffer: after encode_varint writes to b, the buffer
-
----
-
-slice at [i, i+nbytes) equals the pure varint.enc.  This structurally
-
----
-
-bridges the Low* encoder to the pure spec by combining the encode_varint
-
----
-
-post-condition (per-byte buffer facts) with lemma_encode_varint_matches_pure
-
----
-
-(per-byte pure facts).  The 5-range case analysis matches encode_varint's
-
----
-
-post-condition exactly; call this from lemma_low_roundtrip_varint after encode.
-
----
-
-lemma_low_roundtrip_varint: composes encode_varint + varint.roundtrip + decode_varint.
-
----
-
-1. encode_varint writes buffer bytes; h_mid captures post-encode heap
-
----
-
-2. lemma_encode_varint_eq_buffer → buffer slice == varint.enc n
-
----
-
-3. lemma_decode_varint_roundtrip → varint_decode_expected on varint.enc n
-
----
-
-= varint_decode_expected on varint.enc n (substituting step 2)
-
----
-
-Note: varint.roundtrip is NOT directly called here but IS transitively
-
----
-
-needed (lemma_decode_varint_roundtrip → lemma_encode_varint_matches_pure
+Public API stays `U32.t` for offsets/`pos`/`n`/`value` (matching the pure
+spec + OCaml extraction); only the buffer read/write boundary converts to
+`SizeT` via `uint32_to_sizet`.  `nosmt`/`noextract` spec helpers
+`varint_encode_pred` and `varint_decode_expected` are not extracted.
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Summary
 
-Rewrite the single C leaf module `Data.Codec.Low` from the KaRaMeL Low\*
+Rewrite the single C leaf module `Data.Codec.Pulse` from the KaRaMeL Low\*
 style (`Stack` effect + `LowStar.Buffer`) to **Pulse** (`fn` +
 `Pulse.Lib.*`), so it can extract to C via F\*'s Custard backend
 (`--codegen Custard --custard_backend C`) and restore the `native` C target.
@@ -11,7 +11,7 @@ style (`Stack` effect + `LowStar.Buffer`) to **Pulse** (`fn` +
 
 The `fstar-roll-forward` change moved the toolchain to F\* `v2026.09.20+lsp`,
 which **deleted the entire KaRaMeL/Low\* stdlib** (`FStar.HyperStack`,
-`FStar.HyperStack.ST`, `LowStar.Buffer`).  As a result `Data.Codec.Low`
+`FStar.HyperStack.ST`, `LowStar.Buffer`).  As a result `Data.Codec.Pulse`
 cannot even typecheck anymore, and the old `native`/`krml`/`rust`/`wasm`
 targets were removed.  The pure spec (`Data.Codec.Types` + `Data.Codec`)
 survives and verifies at 0-admit; only the leaf — and its two test modules —
@@ -32,7 +32,7 @@ untouched.
 ## Scope
 
 - **In scope**:
-  - Rewrite `src/Data.Codec.Low.fst` in Pulse: `Stack` → Pulse `fn`,
+  - Rewrite `src/Data.Codec.Pulse.fst` in Pulse: `Stack` → Pulse `fn`,
     `LB.buffer U8.t` → `Pulse.Lib.Vec.vec U8.t` (or `Array`), `LB.upd`/`LB.index`
     → Pulse read/write, and express the `modifies`/`h0 == h1` framing as Pulse
     separation-logic pre/post.

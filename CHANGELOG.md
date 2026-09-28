@@ -9,13 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Renamed the C leaf `Data.Codec.Low` → `Data.Codec.Pulse` (the KaRaMeL `.Low`
+  convention is retired; the Pulse/Custard layer is the successor).  This
+  pins the convention for future standalone xeno extractions: each `.Low`
+  module becomes `.Pulse` as it is ported to F\* v2026.09.20.
+- Ported `Data.Codec.Pulse` from KaRaMeL Low\* (`Stack` + `LowStar.Buffer`) to
+  Pulse (`fn` + `Pulse.Lib.Array`), 0-admit, extracting to C11 via Custard.
+
+### Changed
+
 - Rolled F\* forward to `v2026.09.20+lsp` (first stable tag shipping the
   Custard extractor).
 - Removed the KaRaMeL/Low\* toolchain and all its targets (`krml`, `native`,
   `rust`, `wasm`) — F\* `v2026.09.20` deleted the `FStar.HyperStack` /
   `LowStar.Buffer` stdlib, so the `.Low` leaf cannot typecheck anymore.
 - `checked` now verifies the pure spec (`Data.Codec.Types` + `Data.Codec`);
-  `ocaml` packages only the pure spec.  `Data.Codec.Low` + its two test
+  `ocaml` packages only the pure spec.  `Data.Codec.Pulse` + its two test
   modules are out of the build pending a Pulse port.
 
 ### Source drift fixes
@@ -32,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Three source modules:
   - `Data.Codec.Types` — the `codec a` record and its 19+ base combinators.
   - `Data.Codec` — derived combinators, operator aliases, character predicates.
-  - `Data.Codec.Low` — C-extractable `.Low` leaf codecs.
+  - `Data.Codec.Pulse` — C-extractable `.Low` leaf codecs.
 - Two test modules:
   - `Data.Codec.Test.Roundtrip`
   - `Data.Codec.Test.Integration`

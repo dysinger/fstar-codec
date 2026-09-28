@@ -71,7 +71,7 @@ Custard first appears in a stable tag at **`v2026.09.20`** (443 files; the tags
   in `../fstar` (commit `cf847952b9`) that rebases the LSP server onto
   `v2026.09.20` — the flake's `fstar` input points at that branch, not the
   bare upstream tag.
-- Custard is experimental: direct-C output may not yet cover `Data.Codec.Low`'s
+- Custard is experimental: direct-C output may not yet cover `Data.Codec.Pulse`'s
   constructs (buffers, `Stack`, sum types), and its `KrmlRust` backend is
   explicitly unimplemented.
 - 0-admit status must be re-proven under the new F* (the LSP/tools check is

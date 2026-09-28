@@ -19,7 +19,7 @@ module Data.Codec.Test.Integration
 
 open Data.Codec
 open Data.Codec.Types
-open Data.Codec.Low
+open Data.Codec.Pulse
 
 open FStar.Seq
 open FStar.UInt8
@@ -165,14 +165,14 @@ let _ct120 = Data.Codec.Test.Roundtrip.test_take_truncated
 (* ── Anchor numbering note ──
    Concrete tests: _ct0.._ct120 cover roundtrip, error paths, Stack-based
    operations, char predicates, and derived combinators.
-   Low.fst lemmas: _lowL0.._lowL8.  Low.fst roundtrip lemmas: _low17.._low22b.
-   Numbering gaps (_low15, _low16) are intentional — preserved for diff history.
+   Pulse.fst lemmas: _pulseL0.._pulseL8.  Pulse.fst roundtrip lemmas: _pulse17.._pulse22b.
+   Numbering gaps (_pulse15, _pulse16) are intentional — preserved for diff history.
    Renumber at next major API version.
    ── *)
 
 (* ── Gap anchors — prevent accidental reuse of deleted anchor names ── *)
-let _low15_gap = ()
-let _low16_gap = ()
+let _pulse15_gap = ()
+let _pulse16_gap = ()
 
 (* ── Types + helpers ── *)
 let _t0  = nat_of_int
@@ -344,48 +344,48 @@ let _cp14 = char_is_printable
 let _cp15 = digit_byte
 
 
-(* ── Low.fst lemmas ── *)
-let _lowL0 = Data.Codec.Low.lemma_pow2_32
-let _lowL0b = Data.Codec.Low.lemma_buffer_length_bound
-let _lowL1 = Data.Codec.Low.lemma_decode_guard_implies_len_pos
-let _lowL2 = Data.Codec.Low.lemma_lte_add2_implies_len_ge_2
-let _lowL3 = Data.Codec.Low.lemma_lte_add4_implies_len_ge_4
-let _lowL4 = Data.Codec.Low.lemma_u32_add_no_overflow
-let _lowL5 = Data.Codec.Low.lemma_byteval_index_from_slice
-let _lowL6 = Data.Codec.Low.lemma_word32_shift_bytes
-let _lowL7 = Data.Codec.Low.lemma_encode_varint_matches_pure
-let _lowL7a = Data.Codec.Low.varint_encode_pred
-let _lowL7b = Data.Codec.Low.lemma_encode_varint_eq_buffer
-let _lowL7c = Data.Codec.Low.lemma_decode_varint_roundtrip
-let _lowL8 = Data.Codec.Low.varint_decode_expected
+(* ── Pulse.fst lemmas ── *)
+let _pulseL0 = Data.Codec.Pulse.lemma_pow2_32
+let _pulseL0b = Data.Codec.Pulse.lemma_buffer_length_bound
+let _pulseL1 = Data.Codec.Pulse.lemma_decode_guard_implies_len_pos
+let _pulseL2 = Data.Codec.Pulse.lemma_lte_add2_implies_len_ge_2
+let _pulseL3 = Data.Codec.Pulse.lemma_lte_add4_implies_len_ge_4
+let _pulseL4 = Data.Codec.Pulse.lemma_u32_add_no_overflow
+let _pulseL5 = Data.Codec.Pulse.lemma_byteval_index_from_slice
+let _pulseL6 = Data.Codec.Pulse.lemma_word32_shift_bytes
+let _pulseL7 = Data.Codec.Pulse.lemma_encode_varint_matches_pure
+let _pulseL7a = Data.Codec.Pulse.varint_encode_pred
+let _pulseL7b = Data.Codec.Pulse.lemma_encode_varint_eq_buffer
+let _pulseL7c = Data.Codec.Pulse.lemma_decode_varint_roundtrip
+let _pulseL8 = Data.Codec.Pulse.varint_decode_expected
 
-(* ── Low.fst functions ── *)
-let _low0 = Data.Codec.Low.encode_token
-let _low1 = Data.Codec.Low.encode_byteval
-let _low2 = Data.Codec.Low.encode_word16be
-let _low3 = Data.Codec.Low.encode_word32be
-let _low4 = Data.Codec.Low.encode_word16le
-let _low5 = Data.Codec.Low.encode_word32le
-let _low5a = Data.Codec.Low.encode_uint8
-let _low5b = Data.Codec.Low.encode_varint
-let _low6 = Data.Codec.Low.decode_token
-let _low7 = Data.Codec.Low.decode_byteval
-let _low8 = Data.Codec.Low.decode_word16be
-let _low9 = Data.Codec.Low.decode_word32be
-let _low10 = Data.Codec.Low.decode_word16le
-let _low11 = Data.Codec.Low.decode_word32le
-let _low11a = Data.Codec.Low.decode_uint8
-let _low11b = Data.Codec.Low.decode_varint
-let _low12 = Data.Codec.Low.encode_bytes
-let _low13 = Data.Codec.Low.decode_bytes
-let _low14 = Data.Codec.Low.lemma_low_encode_decode_match
-let _low17 = Data.Codec.Low.lemma_low_roundtrip_token
-let _low18 = Data.Codec.Low.lemma_low_roundtrip_byteval
-let _low19 = Data.Codec.Low.lemma_low_roundtrip_word16be
-let _low20 = Data.Codec.Low.lemma_low_roundtrip_word32be
-let _low21 = Data.Codec.Low.lemma_low_roundtrip_word16le
-let _low22 = Data.Codec.Low.lemma_low_roundtrip_word32le
-let _low22a = Data.Codec.Low.lemma_low_roundtrip_uint8
-let _low22b = Data.Codec.Low.lemma_low_roundtrip_varint
+(* ── Pulse.fst functions ── *)
+let _pulse0 = Data.Codec.Pulse.encode_token
+let _pulse1 = Data.Codec.Pulse.encode_byteval
+let _pulse2 = Data.Codec.Pulse.encode_word16be
+let _pulse3 = Data.Codec.Pulse.encode_word32be
+let _pulse4 = Data.Codec.Pulse.encode_word16le
+let _pulse5 = Data.Codec.Pulse.encode_word32le
+let _pulse5a = Data.Codec.Pulse.encode_uint8
+let _pulse5b = Data.Codec.Pulse.encode_varint
+let _pulse6 = Data.Codec.Pulse.decode_token
+let _pulse7 = Data.Codec.Pulse.decode_byteval
+let _pulse8 = Data.Codec.Pulse.decode_word16be
+let _pulse9 = Data.Codec.Pulse.decode_word32be
+let _pulse10 = Data.Codec.Pulse.decode_word16le
+let _pulse11 = Data.Codec.Pulse.decode_word32le
+let _pulse11a = Data.Codec.Pulse.decode_uint8
+let _pulse11b = Data.Codec.Pulse.decode_varint
+let _pulse12 = Data.Codec.Pulse.encode_bytes
+let _pulse13 = Data.Codec.Pulse.decode_bytes
+let _pulse14 = Data.Codec.Pulse.lemma_pulse_encode_decode_match
+let _pulse17 = Data.Codec.Pulse.lemma_pulse_roundtrip_token
+let _pulse18 = Data.Codec.Pulse.lemma_pulse_roundtrip_byteval
+let _pulse19 = Data.Codec.Pulse.lemma_pulse_roundtrip_word16be
+let _pulse20 = Data.Codec.Pulse.lemma_pulse_roundtrip_word32be
+let _pulse21 = Data.Codec.Pulse.lemma_pulse_roundtrip_word16le
+let _pulse22 = Data.Codec.Pulse.lemma_pulse_roundtrip_word32le
+let _pulse22a = Data.Codec.Pulse.lemma_pulse_roundtrip_uint8
+let _pulse22b = Data.Codec.Pulse.lemma_pulse_roundtrip_varint
 
 #pop-options

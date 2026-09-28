@@ -44,7 +44,7 @@ Their insight was that a grammar can be a *single* value that performs both
 parsing and pretty-printing, removing the class of bugs born from keeping the
 two in sync by hand.  `Data.Codec` takes that idea and strengthens it in two
 ways: the language is F\*, so the inverse property is a **proof** rather than a
-convention, and the leaf codecs are **Low\***, so the same verified definitions
+convention, and the leaf codecs are **Pulse**, so the same verified definitions
 compile to C for use at the byte-buffer level.
 
 ## Features
@@ -57,8 +57,8 @@ compile to C for use at the byte-buffer level.
   `*>`, `<*`, `>>=`).
 - **Proven roundtrips.**  Every combinator carries a lemma; no `admit`, no
   `assume`, no `admit_smt_queries`.
-- **C extraction.**  The Low\* leaf codecs extract to C with byte-level
-  post-conditions (currently being re-targeted from KaRaMeL Low\* to Pulse).
+- **C extraction.**  The Pulse leaf codecs extract to C with byte-level
+  post-conditions (via Custard `--custard_backend C`, no KaRaMeL).
 - **A real test suite.**  120 roundtrip and error-path tests, all verified.
 
 ## Modules
@@ -67,7 +67,7 @@ compile to C for use at the byte-buffer level.
 |--------|------|
 | `Data.Codec.Types` | The `codec a` record, the base combinators, their lemmas. |
 | `Data.Codec` | Derived combinators, operator aliases, character predicates. |
-| `Data.Codec.Low` | C-extractable leaf codecs (8 types), buffer I/O. *(pending Pulse port)* |
+| `Data.Codec.Pulse` | C-extractable leaf codecs (8 types), buffer I/O. *(pending Pulse port)* |
 
 Test modules (verified, not extracted):
 
@@ -105,15 +105,15 @@ The build is two layers:
 Toolchain: F\* `v2026.09.20+lsp` (a fork pin carrying the LSP server).  The
 former KaRaMeL/`.krml`/`rust`/`wasm` targets were removed; the only C backend
 in the new F\* is Custard (`--codegen Custard --custard_backend C`), which
-extracts Pulse rather than KaRaMeL Low\*.  The `Data.Codec.Low` leaf awaits a
-Pulse rewrite.
+extracts Pulse rather than KaRaMeL Low\*.  `Data.Codec.Pulse` is the Pulse
+leaf (8 leaf codecs + dispatch + roundtrip lemmas).
 
 ## Architecture
 
 ```
 Data.Codec.Types     — codec record, 19 base combinators, all lemmas
 Data.Codec           — derived combinators, operator aliases, char predicates
-Data.Codec.Low       — (pending Pulse port) C-extractable leaf codecs
+Data.Codec.Pulse     — C-extractable leaf codecs (Pulse fn, Custard C output)
 ```
 
 ## License

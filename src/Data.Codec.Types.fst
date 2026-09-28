@@ -79,11 +79,11 @@ let mk_decode_error (c: error_code) (n: nat) : decode_error =
 (** Result of decoding: either an error or a value plus bytes consumed. *)
 type decode_result (a: Type0) = either decode_error (a & nat)
 
-(** Low* variant of decode error using [U32.t] position. *)
-type decode_error_lo = { locode: error_code; lopos: U32.t }
+(** Pulse-layer variant of decode error using [U32.t] position. *)
+type decode_error_pulse = { locode: error_code; lopos: U32.t }
 
-(** Low* variant of decode result. *)
-type decode_result_lo (a: Type0) = either decode_error_lo (a & U32.t)
+(** Pulse-layer variant of decode result. *)
+type decode_result_pulse (a: Type0) = either decode_error_pulse (a & U32.t)
 
 (** Clamp negative integers to 0.
 
@@ -1340,7 +1340,7 @@ let lemma_nbytes_of_varint_correct (n: int) : Lemma
     prove each length case.  Five arithmetic lemmas ([lemma_varint_{2..5}byte_arithmetic])
     provide the integer decomposition identities.
 
-    C extraction: Low* layer provides a U32.t-bounded encoder with
+    C extraction: Pulse layer provides a U32.t-bounded encoder with
     [varint_encode_pred] byte-level specification. *)
 
 (** NOTE: digits_to_int accumulator and varint_decode_go value parameter *)
@@ -1593,9 +1593,9 @@ let varint : codec int = {
     let n = v in
     seq_of_list (varint_encode_go (nat_of_int (nbytes_of_varint n)) 0 (nat_of_int n) []));
   dec       = (fun s -> varint_decode_go s 10 0 0 0);
-  (* wfcv range: [0, 2^35).  Low* bridge (Data.Codec.Low) uses U32.t values
+  (* wfcv range: [0, 2^35).  Pulse bridge (Data.Codec.Pulse) uses U32.t values
      limited to [0, 2^32).  Pure values in [2^32, 2^35) are valid per this
-     codec but have no Low* encode/decode path.  This is intentional for
+     codec but have no Pulse encode/decode path.  This is intentional for
      typical protocols which only need 32-bit values over the wire; the headroom
      ensures all valid U32 values fit comfortably in a 5-byte varint. *)
   wfcv      = (fun v -> 0 <= v && v < 34359738368);

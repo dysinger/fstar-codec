@@ -12,7 +12,7 @@
 #   - `checked` — F* verification of src/ + test/ (the 0-admit gate).
 #   - `ocaml`   — findlib package of the pure spec modules
 #                 (`Data.Codec.Types` + `Data.Codec`).
-#   - `native`  — C11 shared/static lib of the Pulse leaf (`Data.Codec.Low`)
+#   - `native`  — C11 shared/static lib of the Pulse leaf (`Data.Codec.Pulse`)
 #                 via Custard (`--custard_backend C`), no karamel.
 #
 # Returns { checked; ocaml; native; }.
@@ -61,7 +61,7 @@ let
   # ── OCaml source backend ────────────────────────────────────────────
   #
   # `fstar.exe --codegen OCaml` extracts the pure spec modules (the `codec`
-  # type + combinators), not the `.Low` Stack implementation.
+  # type + combinators), not the `Pulse` implementation.
 
   # dune library name + module names: OCaml module names are the F* module
   # names with dots turned into underscores (fstar.exe --codegen OCaml emits
@@ -126,7 +126,7 @@ DUNE
   # ── native (C) backend via Custard ─────────────────────────────────
   #
   # `--codegen Custard --custard_backend C` extracts the Pulse leaf
-  # (`Data.Codec.Low`) to C11 with no karamel runtime.  The whole module is a
+  # (`Data.Codec.Pulse`) to C11 with no karamel runtime.  The whole module is a
   # library (no `main`), rooted with `--custard_entry_module`.  The C backend
   # requires `--custard_monomorphize_types true`.
 
@@ -156,7 +156,7 @@ DUNE
       cp ${fstar-checked}/*.checked cache/ 2>/dev/null || true
       # Verify in dependency order into a cache so cross-module inlining
       # (Error 317) can find our own modules' `.checked` files.
-      for m in Data.Codec.Types Data.Codec Data.Codec.Low; do
+      for m in Data.Codec.Types Data.Codec Data.Codec.Pulse; do
         ${fstar-exe} \
           --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src \
           --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
@@ -164,14 +164,14 @@ DUNE
           --cache_checked_modules --cache_dir cache --odir cache \
           src/$m.fst || exit 1
       done
-      # Extract the whole `Data.Codec.Low` module to C (library mode).
+      # Extract the whole `Data.Codec.Pulse` module to C (library mode).
       ${fstar-exe} \
         --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src --include cache \
         --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
         --cache_checked_modules --cache_dir cache \
         --codegen Custard --custard_backend C --custard_monomorphize_types true \
-        --custard_entry_module Data.Codec.Low --odir $out \
-        src/Data.Codec.Low.fst || exit 1
+        --custard_entry_module Data.Codec.Pulse --odir $out \
+        src/Data.Codec.Pulse.fst || exit 1
       # Compile the emitted C11 to a shared object + static lib (no karamel).
       cc -c -Wall -Wextra -Werror -std=c11 -O2 -fPIC -I $out $out/Custard.c -o $out/Custard.o
       if [ "$(uname -s)" = Darwin ]; then

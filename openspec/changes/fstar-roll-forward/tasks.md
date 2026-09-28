@@ -79,7 +79,7 @@ last tagged `v2025.12.15+lsp`); upstream `FStarLang/FStar` has none.  Rolling to
 
 ## Phase 3 — Custard: the leaf needs a Pulse port, not a probe
 
-> **Finding (this session):** the `Data.Codec.Low` leaf is KaRaMeL Low\*
+> **Finding (this session):** the `Data.Codec.Pulse` leaf is KaRaMeL Low\*
 > (`Stack` + `LowStar.Buffer`), and F\* `v2026.09.20` **removed that entire
 > stdlib**.  Custard's C backend extracts **Pulse** (`Pulse.Lib.Reference`/
 > `Vec`/`Array`), not Low\*.  So `--codegen Custard --custard_backend C` on
@@ -94,11 +94,11 @@ last tagged `v2025.12.15+lsp`); upstream `FStarLang/FStar` has none.  Rolling to
 - [x] **T4.1 — Record the verdict.**  `rust`/`wasm` (and the whole KaRaMeL
       `krml`/`native` layer) are dropped — the toolchain that produced them
       was deleted upstream.  The only C path is Custard, gated on the Pulse
-      port of `Data.Codec.Low`.  Documented in README + AGENTS.md.
+      port of `Data.Codec.Pulse`.  Documented in README + AGENTS.md.
 - [ ] **T4.2 — Commit.**  Pending review.
 
 ## Definition of done
 
 `nix build .#fstar-codec-checked` (0-admit) + `.#fstar-codec-ocaml` GREEN
 against `v2026.09.20+lsp`; KaRaMeL/Low\* layer confirmed dead upstream and
-removed; Custard-C gated on a Pulse port of `Data.Codec.Low` (next change).
+removed; Custard-C gated on a Pulse port of `Data.Codec.Pulse` (next change).

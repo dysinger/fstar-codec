@@ -1,16 +1,16 @@
 # Implementation Tasks: low-pulse-port
 
-**Change**: rewrite `Data.Codec.Low` from KaRaMeL Low\* (`Stack` +
+**Change**: rewrite `Data.Codec.Pulse` from KaRaMeL Low\* (`Stack` +
 `LowStar.Buffer`) to Pulse (`fn` + `Pulse.Lib.*`) so it extracts to C via
 Custard (`--custard_backend C`), restoring the `native` target.
 
 > **Prerequisite**: the `fstar-roll-forward` change is landed (F\*
 > `v2026.09.20+lsp` + Custard + karamel removed).
 
-## ⚠️ BLOCKED — `Data.Codec.Low` verify HANGS (non-terminating SMT query)
+## ⚠️ BLOCKED — `Data.Codec.Pulse` verify HANGS (non-terminating SMT query)
 
 T3/T4 are **blocked**: `Data.Codec.Types` and `Data.Codec` verify, then the
-`Data.Codec.Low` `fstar.exe` run hangs forever (35+ min at 0% CPU, `status =
+`Data.Codec.Pulse` `fstar.exe` run hangs forever (35+ min at 0% CPU, `status =
 stopped`).  It verified + extracted green **earlier this session** (commit
 `a34c984` produced `libfstar-codec.dylib`), so this is a flaky/non-terminating
 SMT query — not a type error.  Prime suspects (the `--z3rlimit`-sensitive
@@ -19,7 +19,7 @@ word32 roundtrip/encode `fn`s) and a step-by-step isolation plan
 byte-extraction into a `Lemma`, or use a `noextract` helper predicate) are in
 [`AGENTS.md`](../../../AGENTS.md) § "BLOCKED".
 
-**T3.2 (test rewrite) depends on this** — the test modules `open Data.Codec.Low`.
+**T3.2 (test rewrite) depends on this** — the test modules `open Data.Codec.Pulse`.
 
 ## Phase 1 — Spike the Pulse idiom (de-risk before the full port)
 
@@ -50,8 +50,8 @@ byte-extraction into a `Lemma`, or use a `noextract` helper predicate) are in
       with full per-constructor post-conditions, verified, extracted.
 - [x] **T2.5 — Ghost spec + constants.**  Done: `varint_encode_pred` and
       `varint_decode_expected` are `noextract` pure specs (skipped by Custard).
-- [x] **T2.6 — Roundtrip lemmas.**  Done: `lemma_low_roundtrip_{token,
-      byteval,uint8,word16be,word16le,word32be,word32le,varint}` + `lemma_low_
+- [x] **T2.6 — Roundtrip lemmas.**  Done: `lemma_pulse_roundtrip_{token,
+      byteval,uint8,word16be,word16le,word32be,word32le,varint}` + `lemma_pulse_
       encode_decode_match` ported to Pulse `fn` and verified.  Much easier than
       feared: the pure `codec` `.enc`/`.dec` are record projections that
       compute, so `dec (enc x)` reduces and SMT discharges the roundtrip
@@ -59,7 +59,7 @@ byte-extraction into a `Lemma`, or use a `noextract` helper predicate) are in
 
 ## Phase 3 — Restore the build + tests
 
-- [x] **T3.1 — Re-add to Makefile.**  Done: `Data.Codec.Low` back in
+- [x] **T3.1 — Re-add to Makefile.**  Done: `Data.Codec.Pulse` back in
       `SRC_MODS`; Makefile adds Pulse `--include` paths + `--already_cached`
       for the Pulse stdlib.  `nix build .#fstar-codec-checked` GREEN.
 - [ ] **T3.2 — Update test modules.**  Rewrite the two test modules' Low*/
@@ -76,10 +76,10 @@ byte-extraction into a `Lemma`, or use a `noextract` helper predicate) are in
       `FStar.HyperStack`/`FStar.HyperStack.ST`/`LowStar.Buffer` (all deleted).
       Rewrite to Pulse `fn` using `A.alloc`/`A.with_local` + `b.(j) <- x` +
       the `#lang-pulse`/`open Pulse`/`module A = Pulse.Lib.Array` idiom from
-      `src/Data.Codec.Low.fst` (and `spike/Data.Codec.Spike.fst`).
+      `src/Data.Codec.Pulse.fst` (and `spike/Data.Codec.Spike.fst`).
 
       **`test/Data.Codec.Test.Integration.fst`** (391 lines): a coverage-anchor
-      module that `open Data.Codec.Low` and names ~20 leaf definitions to force
+      module that `open Data.Codec.Pulse` and names ~20 leaf definitions to force
       verification.  Its `_lowL0`…`_lowL8` anchors reference **dropped helper
       lemmas** (`lemma_pow2_32`, `lemma_buffer_length_bound`,
       `lemma_decode_guard_implies_len_pos`, `lemma_lte_add2/4_implies_len_ge_2/4`,
@@ -90,7 +90,7 @@ byte-extraction into a `Lemma`, or use a `noextract` helper predicate) are in
       Options: drop those anchors, or keep them by re-exporting the (now trivial)
       corresponding proofs.  The `_low0`…`_low22b` function/lemma anchors map
       cleanly to the Pulse `fn`s (encode/decode/encode_bytes/decode_bytes/
-      `lemma_low_roundtrip_*`/`lemma_low_encode_decode_match`).
+      `lemma_pulse_roundtrip_*`/`lemma_pulse_encode_decode_match`).
 
       Both files also `open FStar.HyperStack`/`FStar.HyperStack.ST`/
       `LowStar.Buffer` — remove those opens.

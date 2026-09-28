@@ -9,7 +9,7 @@ resumes cleanly.
 
 1. **NEVER run `fstar.exe`, `nix build`, `make`, or any verification/extraction
    step in the foreground.**  They can hang forever (observed: the Pulse
-   verify of `Data.Codec.Low` sleeps at 0% CPU for 35+ minutes — a non-terminating
+   verify of `Data.Codec.Pulse` sleeps at 0% CPU for 35+ minutes — a non-terminating
    Z3/Pulse query).  **Always** wrap them with a hard timeout so a stuck
    process dies and you regain control:
 
@@ -40,10 +40,10 @@ resumes cleanly.
 > [`openspec/changes/low-pulse-port/proposal.md`](openspec/changes/low-pulse-port/proposal.md)
 > (the change intent).
 
-## ⚠️ BLOCKED: `Data.Codec.Low` verification HANGS (next session's #1 task)
+## ⚠️ BLOCKED: `Data.Codec.Pulse` verification HANGS (next session's #1 task)
 
 The native gate does **not** currently build.  `Data.Codec.Types` and
-`Data.Codec` verify, then the `Data.Codec.Low` `fstar.exe` invocation **hangs
+`Data.Codec` verify, then the `Data.Codec.Pulse` `fstar.exe` invocation **hangs
 forever** — observed stuck for 35+ minutes at 0% CPU, `status = stopped` (S).
 The process (probed this session):
 
@@ -53,7 +53,7 @@ fstar.exe --no_default_includes --include …/ulib \
   --include …/pulse/pulse/lib --include …/pulse/pulse.checked --include ./src \
   --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
   --z3rlimit 120 --cache_checked_modules --cache_dir cache --odir cache \
-  src/Data.Codec.Low.fst
+  src/Data.Codec.Pulse.fst
 ```
 
 **It verified and extracted GREEN earlier this same session** (commit `a34c984`
@@ -68,13 +68,13 @@ context (different query splitting, resource limits).
 
 ### Diagnosis plan for next session (do these in order, each with a timeout)
 
-1. **Isolate which `fn` hangs.**  Run `fstar.exe` on `Data.Codec.Low` with
+1. **Isolate which `fn` hangs.**  Run `fstar.exe` on `Data.Codec.Pulse` with
    `--z3rlimit` stepped (80 → 120 → 200 → 400) and **`--log_queries`** (or
    `--log_types`/`--print_z3_statistics`), wrapped in `timeout 300`, and capture
    the LAST query F* emits before it stops.  A hang (vs. a clean Error 19
    timeout) means Z3 itself never returns on one query.
 2. **Suspects (by ordering):**
-   - `lemma_low_roundtrip_word32be` / `word32le` (division-vs-shift byte
+   - `lemma_pulse_roundtrip_word32be` / `word32le` (division-vs-shift byte
      extraction, the flaky spot seen earlier — the `word32*.enc` post uses
      `U32.div`/`U32.rem` chains).
    - `encode_word32be` / `encode_word32le` (the `Seq.slice s1 == word32*.enc`
@@ -91,30 +91,30 @@ context (different query splitting, resource limits).
    single hanging module first, then re-run the derivation once.
 
 This is tracked as the #1 item; **T3.2 (test rewrite) is blocked on it** — the
-leaf must verify before the test modules (which `open Data.Codec.Low`) can be
+leaf must verify before the test modules (which `open Data.Codec.Pulse`) can be
 re-added.
 
 ## Current state (post Pulse port)
 
 ### GREEN (verified earlier this session, F* `v2026.09.20+lsp`)
 
-> ⚠️ **`Data.Codec.Low` now HANGS on re-verify** (see the BLOCKED note above).
+> ⚠️ **`Data.Codec.Pulse` now HANGS on re-verify** (see the BLOCKED note above).
 > The following were green earlier in the session and are the baseline to
 > recover:
 
 - `nix build .#fstar-codec-checked` — 0 admits.  Verifies **spec + Pulse leaf**:
-  `Data.Codec.Types` + `Data.Codec` + `Data.Codec.Low`.
+  `Data.Codec.Types` + `Data.Codec` + `Data.Codec.Pulse`.
 - `nix build .#fstar-codec-ocaml` — pure spec to OCaml findlib (`fstar_codec`).
 - `nix build .#fstar-codec-native` — the Pulse leaf extracted to C11 via
   Custard, `libfstar-codec.{dylib,so,a}` + `fstar_codec.h`, no karamel
   (produced `dylib`/`a` once; now blocked by the hang).
 
-### `Data.Codec.Low` is PORTED to Pulse (this session)
+### `Data.Codec.Pulse` is PORTED to Pulse (this session)
 
 The ~860-line Pulse rewrite is complete and 0-admit: 8 encoders + 8 decoders +
 `encode_bytes`/`decode_bytes` dispatch + `varint_encode_pred`/
 `varint_decode_expected` (`noextract` pure specs) + 8 roundtrip lemmas +
-`lemma_low_encode_decode_match`.  Extracts to warning-free C11.  The port was
+`lemma_pulse_encode_decode_match`.  Extracts to warning-free C11.  The port was
 much easier than the proposal feared: the pure `codec` `.enc`/`.dec` are record
 projections that compute, so `dec (enc x)` reduces and SMT discharges the
 roundtrip lemmas automatically (the old `lemma_word32_shift_bytes` /
@@ -141,10 +141,10 @@ In short:
 
 F* `v2026.09.20` **removed the entire Low\*/KaRaMeL stdlib**: the namespaces
 `FStar.HyperStack`, `FStar.HyperStack.ST`, and `LowStar.Buffer` no longer
-exist.  Consequently the **old** `src/Data.Codec.Low.fst` could not typecheck
+exist.  Consequently the **old** `src/Data.Codec.Pulse.fst` could not typecheck
 and was ported to Pulse this session (see "PORTED" above).  What remains dead:
 
-- `test/Data.Codec.Test.{Roundtrip,Integration}.fst` still `open Data.Codec.Low`
+- `test/Data.Codec.Test.{Roundtrip,Integration}.fst` still `open Data.Codec.Pulse`
   **and** `open FStar.HyperStack`/`FStar.HyperStack.ST`/`LowStar.Buffer` — they
   are still not built (T3.2).
 
@@ -203,7 +203,7 @@ is a separate follow-up (`.NET 10`); `rust`/`wasm` are dropped permanently.
 ## Pulse idiom (pinned by the spike, applied to the leaf)
 
 `spike/Data.Codec.Spike.fst` (gitignored) was the Phase-1 spike; the exact
-idiom is now applied in `src/Data.Codec.Low.fst`.  Key facts:
+idiom is now applied in `src/Data.Codec.Pulse.fst`.  Key facts:
 
 - **Buffer type**: `A.array U8.t` (`Pulse.Lib.Array`), view `A.pts_to b s`
   (`s : Seq.seq U8.t` erased).  Read `b.(j)`, write `b.(j) <- x` with `j :

@@ -21,7 +21,7 @@ ULIB := $(shell $(FSTAR) --locate_lib 2>/dev/null || echo /none)/ulib
 
 # Pulse ships in the install under $(locate_lib)/pulse (sources under
 # pulse/{common,pulse/lib}, `.checked` under pulse/{common.checked,
-# pulse.checked}).  Data.Codec.Low (in Pulse) needs these, since FSTAR_FLAGS
+# pulse.checked}).  Data.Codec.Pulse (in Pulse) needs these, since FSTAR_FLAGS
 # uses --no_default_includes.
 FLIB := $(shell $(FSTAR) --locate_lib 2>/dev/null || echo /none)
 PULSE_DIRS := $(FLIB)/pulse/common\
@@ -38,13 +38,13 @@ FSTAR_FLAGS = --no_default_includes \
 
 # Source modules in DEPENDENCY ORDER (leaf modules first).
 #
-# Data.Codec.Low is back in: it was rewritten in Pulse (see AGENTS.md) and
+# Data.Codec.Pulse is back in: it was rewritten in Pulse (see AGENTS.md) and
 # verifies/extracts via Custard.  The two test modules still `open` the old
-# Low*/Stack surface and are excluded pending their Pulse rewrite (T3.2).
-SRC_MODS := Data.Codec.Types Data.Codec Data.Codec.Low
+# old Low*/Stack surface and are excluded pending their Pulse rewrite (T3.2).
+SRC_MODS := Data.Codec.Types Data.Codec Data.Codec.Pulse
 
 # Pulse-only modules skip re-verification (they ship pre-verified in the F*
-# install); Data.Codec.Low opens Pulse.Lib.* which would otherwise time out
+# install); Data.Codec.Pulse opens Pulse.Lib.* which would otherwise time out
 # re-verifying the whole Pulse stdlib on every `make check`.
 ALREADY_CACHED := Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore
 
@@ -56,7 +56,7 @@ ALREADY_CACHED := Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore
 # the `check` prerequisite MUST use the raw module name, not `subst .,_`.
 # (`subst .,_` here would look for Data_Codec.fst.checked, which F* never
 # writes, leaving `make check` permanently out-of-date.)
-# Tests are also excluded for now (they `open Data.Codec.Low`).
+# Tests are also excluded for now (they `open Data.Codec.Pulse`).
 TST_MODS :=
 
 check: $(addprefix $(OUT)/checked/,$(addsuffix .fst.checked,$(SRC_MODS))) \

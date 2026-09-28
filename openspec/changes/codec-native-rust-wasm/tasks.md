@@ -2,12 +2,12 @@
 
 **Change**: compile `fstar-codec` to `native`/`rust`/`wasm` (in addition to the
 working `ocaml`).  Root cause is the `open Data.Codec.Types` in
-`src/Data.Codec.Low.fst` leaking `FStar.List` reachability into the rust/wasm
+`src/Data.Codec.Pulse.fst` leaking `FStar.List` reachability into the rust/wasm
 backends.
 
 ## Phase 1 — Root-cause the source (the real fix)
 
-- [x] **T1.1 — Inventory what `Data.Codec.Low` actually uses from
+- [x] **T1.1 — Inventory what `Data.Codec.Pulse` actually uses from
       `Data.Codec.Types`.**  Confirmed: `byte` (`U8.t`, Types:55); `byte_seq`
       (`Seq.seq byte`, Types:58); `byte_val` (Types:940, used ONLY in ghost
       `ensures`/lemma spec of `encode_bytes`/`decode_bytes`, never in extracted
@@ -21,7 +21,7 @@ backends.
       `noextract` keyword on its own line before `let` (the `[@ noextract]` /
       `[@@ noextract]` prefix attributes are a SYNTAX ERROR in F* 2025.10.x).
       `varint_decode_expected` → effect `Pure` → `Ghost` (prunes it from the
-      `.krml`; `Pure` does not).  Both now vanish from `Data_Codec_Low.krml`
+      `.krml`; `Pure` does not).  Both now vanish from `Data_Codec_Pulse.krml`
       (0 grep hits), removing `FStar.List` reachability.
 - [x] **T1.3 — Re-verify 0 admits.**  `nix build .#fstar-codec-checked` GREEN,
       0 admits after the source change.
@@ -32,7 +32,7 @@ backends.
       `-warn-error -2 -9-16 -11 -26..28` + `-add-include
       '"krml/internal/compat.h"'` + minimal runtime `.krml` set (NOT the 3515
       glob) + link `libkrmllib.a`.  Produces `libfstar-codec.dylib`/`.so` +
-      `Data_Codec_Low.h`.  nix GREEN.
+      `Data_Codec_Pulse.h`.  nix GREEN.
 - [ ] **T2.2 — `rust`.**  BLOCKED by a KaRaMeL Rust backend defect, NOT source.
       `PrintMiniRust.ml:172` maps `Constant.CInt` (`krml_checked_int_t`, from
       `U32.v`/`U8.v`/`%`/`/`) to an empty string → `let b4_val:  = …`.
@@ -61,7 +61,7 @@ backends.
       .#fstar-codec-checked .#fstar-codec-krml .#fstar-codec-native
       .#fstar-codec-ocaml` GREEN (rust/wasm blocked per T2.2/T2.3).
 - [x] **T3.2 — Exercise outputs.**  `native` produces `libfstar-codec.dylib`
-      (37168 bytes) + `Data_Codec_Low.h`.
+      (37168 bytes) + `Data_Codec_Pulse.h`.
 - [ ] **T3.3 — Update README** target table to list the six targets AND mark
       `rust`/`wasm` as blocked by KaRaMeL backend limitations.
 - [ ] **T3.4 — Commit** (NOT `AGENTS.md`).
@@ -69,4 +69,4 @@ backends.
 ## Definition of done
 
 `native`/`ocaml`/`checked`/`krml` GREEN; `rust`/`wasm` are BLOCKED by verified
-KaRaMeL backend defects (not source); `Data.Codec.Low` remains 0-admit.
+KaRaMeL backend defects (not source); `Data.Codec.Pulse` remains 0-admit.

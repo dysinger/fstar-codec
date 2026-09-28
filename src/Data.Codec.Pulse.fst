@@ -2,17 +2,16 @@
    SPDX-License-Identifier: AGPL-3.0-or-later *)
 
 (**
-Data.Codec.Low — C-extractable codec layer via Pulse + Custard.
+Data.Codec.Pulse — C-extractable codec layer via Pulse + Custard.
 
 Non-recursive leaf codecs (8 types) operating on [Pulse.Lib.Array.array].
 Each encode/decode function has a byte-level post-condition expressed as
-Pulse separation logic (the Pulse analogue of the old KaRaMeL `Stack`
-`requires`/`ensures` + `modifies (LB.loc_buffer b)`).
+Pulse separation logic.
 
 The pure codec spec lives in [Data.Codec.Types]; this module proves
 correspondence with it.  Written for F* v2026.09.20 (Custard `--custard_backend C`).
 
-@header Data.Codec.Low
+@header Data.Codec.Pulse
 
 @section Types
 - [codec_t] — flat GADT: CT_Token, CT_ByteVal, CT_Uint8, CT_Word16BE,
@@ -28,7 +27,7 @@ Dispatch via [encode_bytes].
 Eight leaf decoders, each a Pulse `fn` with result correspondence.
 Dispatch via [decode_bytes].
 *)
-module Data.Codec.Low
+module Data.Codec.Pulse
 #lang-pulse
 
 open Pulse
@@ -48,12 +47,12 @@ open Data.Codec.Types
 
 module DC = Data.Codec.Types
 
-(* ── Types (unchanged from the dead KaRaMeL leaf) ───────────────────── *)
+(* ── Types (carried over unchanged) ─────────────────────────────────── *)
 
 (** Flat codec tag — 8 leaf types extractable to C.
 
     CT_Satisfy excluded: function-typed constructor breaks extraction.
-    CT_Bytes, CT_Text excluded: use Stack bridge. *)
+    CT_Bytes, CT_Text excluded: use the pure-spec bridge. *)
 type codec_t =
   | CT_Token      (** Any single byte *)
   | CT_ByteVal of U8.t  (** Specific b byte *)
@@ -865,8 +864,8 @@ fn decode_bytes (c: codec_t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
 
 (* ── Value-preserving roundtrip lemmas ─────────────────────────────── ─ *)
 
-(** lemma_low_roundtrip_token: encode then decode preserves the value. *)
-fn lemma_low_roundtrip_token (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
+(** lemma_pulse_roundtrip_token: encode then decode preserves the value. *)
+fn lemma_pulse_roundtrip_token (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
       A.pts_to b s0 **
@@ -887,8 +886,8 @@ fn lemma_low_roundtrip_token (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
   (m, r)
 }
 
-(** lemma_low_roundtrip_byteval: encode then decode an expected byte. *)
-fn lemma_low_roundtrip_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
+(** lemma_pulse_roundtrip_byteval: encode then decode an expected byte. *)
+fn lemma_pulse_roundtrip_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
       A.pts_to b s0 **
@@ -908,8 +907,8 @@ fn lemma_low_roundtrip_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
   (m, r)
 }
 
-(** lemma_low_roundtrip_uint8. *)
-fn lemma_low_roundtrip_uint8 (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
+(** lemma_pulse_roundtrip_uint8. *)
+fn lemma_pulse_roundtrip_uint8 (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
       A.pts_to b s0 **
@@ -930,8 +929,8 @@ fn lemma_low_roundtrip_uint8 (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
   (m, r)
 }
 
-(** lemma_low_roundtrip_word16be. *)
-fn lemma_low_roundtrip_word16be (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
+(** lemma_pulse_roundtrip_word16be. *)
+fn lemma_pulse_roundtrip_word16be (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
       A.pts_to b s0 **
@@ -952,8 +951,8 @@ fn lemma_low_roundtrip_word16be (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.
   (m, r)
 }
 
-(** lemma_low_roundtrip_word16le. *)
-fn lemma_low_roundtrip_word16le (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
+(** lemma_pulse_roundtrip_word16le. *)
+fn lemma_pulse_roundtrip_word16le (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
       A.pts_to b s0 **
@@ -974,8 +973,8 @@ fn lemma_low_roundtrip_word16le (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.
   (m, r)
 }
 
-(** lemma_low_roundtrip_word32be. *)
-fn lemma_low_roundtrip_word32be (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
+(** lemma_pulse_roundtrip_word32be. *)
+fn lemma_pulse_roundtrip_word32be (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
       A.pts_to b s0 **
@@ -995,8 +994,8 @@ fn lemma_low_roundtrip_word32be (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.
   (m, r)
 }
 
-(** lemma_low_roundtrip_word32le. *)
-fn lemma_low_roundtrip_word32le (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
+(** lemma_pulse_roundtrip_word32le. *)
+fn lemma_pulse_roundtrip_word32le (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
       A.pts_to b s0 **
@@ -1016,8 +1015,8 @@ fn lemma_low_roundtrip_word32le (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.
   (m, r)
 }
 
-(** lemma_low_roundtrip_varint. *)
-fn lemma_low_roundtrip_varint (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
+(** lemma_pulse_roundtrip_varint. *)
+fn lemma_pulse_roundtrip_varint (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
       A.pts_to b s0 **
@@ -1038,8 +1037,8 @@ fn lemma_low_roundtrip_varint (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
   (m, r)
 }
 
-(** lemma_low_encode_decode_match: dispatch-level master roundtrip lemma. *)
-fn lemma_low_encode_decode_match (c: codec_t) (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
+(** lemma_pulse_encode_decode_match: dispatch-level master roundtrip lemma. *)
+fn lemma_pulse_encode_decode_match (c: codec_t) (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
       A.pts_to b s0 **
@@ -1074,13 +1073,13 @@ fn lemma_low_encode_decode_match (c: codec_t) (v: U32.t) (b: A.array U8.t) (i: U
         | _ -> snd res == DR_Inr ({ n = fst res; value = v }))
 {
   match c {
-    CT_Token -> { lemma_low_roundtrip_token v b i n }
-    CT_ByteVal x -> { lemma_low_roundtrip_byteval x b i n }
-    CT_Uint8 -> { lemma_low_roundtrip_uint8 v b i n }
-    CT_Word16BE -> { lemma_low_roundtrip_word16be v b i n }
-    CT_Word32BE -> { lemma_low_roundtrip_word32be v b i n }
-    CT_Word16LE -> { lemma_low_roundtrip_word16le v b i n }
-    CT_Word32LE -> { lemma_low_roundtrip_word32le v b i n }
-    CT_Varint -> { lemma_low_roundtrip_varint v b i n }
+    CT_Token -> { lemma_pulse_roundtrip_token v b i n }
+    CT_ByteVal x -> { lemma_pulse_roundtrip_byteval x b i n }
+    CT_Uint8 -> { lemma_pulse_roundtrip_uint8 v b i n }
+    CT_Word16BE -> { lemma_pulse_roundtrip_word16be v b i n }
+    CT_Word32BE -> { lemma_pulse_roundtrip_word32be v b i n }
+    CT_Word16LE -> { lemma_pulse_roundtrip_word16le v b i n }
+    CT_Word32LE -> { lemma_pulse_roundtrip_word32le v b i n }
+    CT_Varint -> { lemma_pulse_roundtrip_varint v b i n }
   }
 }
