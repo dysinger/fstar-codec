@@ -131,19 +131,21 @@
           ];
         };
 
-        inherit (pkgs) stdenv fstar fstar-checked lib;
+        inherit (pkgs) stdenv fstar fstar-checked lib dotnet-sdk_10;
         inherit (pkgs) ocamlPackages;
 
         _pkg = import ./default.nix {
           inherit fstar fstar-checked lib ocamlPackages stdenv;
+          dotnet = dotnet-sdk_10;
         };
 
       in
       {
-        packages.default = _pkg.checked;
+        packages.default = _pkg.native;
         packages.fstar-codec-checked = _pkg.checked;
         packages.fstar-codec-ocaml = _pkg.ocaml;
         packages.fstar-codec-native = _pkg.native;
+        packages.fstar-codec-fsharp = _pkg.fsharp;
 
         devShells.default = pkgs.mkShell {
             dontDetectOcamlConflicts = true;
