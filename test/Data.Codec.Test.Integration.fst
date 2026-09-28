@@ -163,9 +163,13 @@ let _ct119 = Data.Codec.Test.Roundtrip.test_drop_then_c2_fails
 let _ct120 = Data.Codec.Test.Roundtrip.test_take_truncated
 
 (* ── Anchor numbering note ──
-   Concrete tests: _ct0.._ct120 cover roundtrip, error paths, Stack-based
-   operations, char predicates, and derived combinators.
-   Pulse.fst lemmas: _pulseL0.._pulseL8.  Pulse.fst roundtrip lemmas: _pulse17.._pulse22b.
+   Concrete tests: _ct0.._ct120 (121 anchors) cover roundtrip, error paths,
+   char predicates, and derived combinators.
+   Pulse.fst encoders/decoders/dispatch: _pulse0.._pulse22 (with _pulse5a/5b,
+   _pulse11a/11b, _pulse22a/22b sub-anchors).
+   Pulse.fst spec-only + SMTPat lemmas: _pulseL7a, _pulseL8, _pulseL8b
+   (anchor varint_encode_pred / varint_decode_expected / lemma_varint_roundtrip_smtpat;
+   the pre-roll-forward _pulseL0.._pulseL6 helper anchors were dropped).
    Numbering gaps (_pulse15, _pulse16) are intentional — preserved for diff history.
    Renumber at next major API version.
    ── *)

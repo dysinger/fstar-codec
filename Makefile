@@ -75,7 +75,7 @@ $(OUT)/checked/%.fst.checked: src/%.fst
 	@cp $(FSTAR_CHECKED)/*.checked $(OUT)/checked/ 2>/dev/null || true
 	@echo "=== $* ==="
 	$(FSTAR) $(FSTAR_FLAGS) \
-	  --z3rlimit 80 \
+	  --z3rlimit 120 \
 	  --already_cached $(ALREADY_CACHED) \
 	  --cache_checked_modules --cache_dir $(OUT)/checked \
 	  --odir $(OUT)/checked $<
@@ -88,7 +88,7 @@ $(OUT)/checked/%.fst.checked: test/%.fst
 	@cp $(FSTAR_CHECKED)/*.checked $(OUT)/checked/ 2>/dev/null || true
 	@echo "=== $* ==="
 	$(FSTAR) $(FSTAR_FLAGS) --include ./test \
-	  --z3rlimit 80 \
+	  --z3rlimit 120 \
 	  --already_cached $(ALREADY_CACHED) \
 	  --cache_checked_modules --cache_dir $(OUT)/checked \
 	  --odir $(OUT)/checked $<
@@ -96,4 +96,4 @@ $(OUT)/checked/%.fst.checked: test/%.fst
 # ── Clean ─────────────────────────────────────────────────────────────
 
 clean:
-	rm -rf $(OUT)
+	rm -rf $(OUT) cache result result-*

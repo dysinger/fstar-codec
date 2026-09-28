@@ -40,20 +40,17 @@ backends.
       '"krml/internal/compat.h"'` + minimal runtime `.krml` set (NOT the 3515
       glob) + link `libkrmllib.a`.  Produces `libfstar-codec.dylib`/`.so` +
       `Data_Codec_Pulse.h`.  nix GREEN.
-- [ ] **T2.2 — `rust`.**  BLOCKED by a KaRaMeL Rust backend defect, NOT source.
-      `PrintMiniRust.ml:172` maps `Constant.CInt` (`krml_checked_int_t`, from
-      `U32.v`/`U8.v`/`%`/`/`) to an empty string → `let b4_val:  = …`.
-      Additionally `-minimal -bundle` emits `crate::fstar`/`crate::prims`/
-      `crate::lowstar::ignore` refs but KaRaMeL ships NO Rust runtime crate.
-      Needs a KaRaMeL patch + runtime shims, or a rewrite of the encode/decode
-      bodies to avoid mathematical ints.
-- [ ] **T2.3 — `wasm`.**  BLOCKED by a KaRaMeL wasm backend limitation, NOT
-      source.  `AstToCFlat.ml` `size_of` maps a wasm value to a SINGLE
-      `I32`/`I64`; `decode_result_c` (20-byte flat struct / tagged union) is
-      UNRETURNABLE from a wasm function (`size_of: this case should've been
-      eliminated`).  `-fnostruct-passing` and `-by-ref` do NOT fix it — no
-      multi-value struct returns.  Needs an API refactor to out-parameter
-      returns.
+- [x] **T2.2 — `rust`.**  ~~BLOCKED by a KaRaMeL Rust backend defect, NOT source.~~
+      **Superseded — KaRaMeL deleted upstream in v2026.09.20; the `rust`
+      backend no longer exists.**  (`PrintMiniRust.ml:172` maps
+      `Constant.CInt` to an empty string → `let b4_val:  = …`, and KaRaMeL ships
+      no Rust runtime crate — but the fix is moot: `rust` is dropped with the
+      whole KaRaMeL layer, not patched.)
+- [x] **T2.3 — `wasm`.**  ~~BLOCKED by a KaRaMeL wasm backend limitation, NOT
+      source.~~  **Superseded — the wasm backend was deleted upstream in
+      v2026.09.20; no wasm target exists.**  (`AstToCFlat.ml` `size_of` mapped a
+      wasm value to a single `I32`/`I64`, making `decode_result_c` unreturnable
+      — moot now.)
 - [x] **T2.4 — Do NOT glob all 3515 `${fstar-krml}/krml/*.krml`.**  DONE.
       `default.nix` now passes a `krml-runtime` list of the ~15 modules the
       generated C actually references (discoverable via `grep -oE
@@ -69,9 +66,13 @@ backends.
       .#fstar-codec-ocaml` GREEN (rust/wasm blocked per T2.2/T2.3).
 - [x] **T3.2 — Exercise outputs.**  `native` produces `libfstar-codec.dylib`
       (37168 bytes) + `Data_Codec_Pulse.h`.
-- [ ] **T3.3 — Update README** target table to list the six targets AND mark
-      `rust`/`wasm` as blocked by KaRaMeL backend limitations.
-- [ ] **T3.4 — Commit** (NOT `AGENTS.md`).
+- [x] **T3.3 — Update README** target table.  **Superseded.**  The six-target
+      matrix is obsolete: README/AGENTS now document the four live targets
+      (`checked`/`ocaml`/`native`/`fsharp`) and record `rust`/`wasm`/`krml` as
+      removed-with-KaRaMeL (see fstar-roll-forward + AGENTS.md backend matrix).
+- [x] **T3.4 — Commit.**  Superseded — folded into the fstar-roll-forward and
+      pulse-fsdoc-finalize commits (the rust/wasm verdict is recorded there,
+      not as a standalone `codec-native-rust-wasm` commit).
 
 ## Definition of done
 

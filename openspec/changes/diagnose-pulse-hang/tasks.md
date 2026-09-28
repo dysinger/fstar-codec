@@ -31,8 +31,6 @@ green (see T7/T8 below).
 
 ## Phase 2 — Fix the hanging proof obligation
 
-- [ ] ~~T3 — Per-`fn` rlimit.~~  **Ruled out** — `--z3rlimit 800` still spins;
-      the query is undecidable by the solver, not rlimit-limited.
 - [x] **T4+T5 — SMTPat structural lemma.**  Added a pure `noextract` `Lemma`
       (`lemma_varint_roundtrip_smtpat`) in `Data.Codec.Pulse` with an
       `[SMTPat (varint_decode_expected i (U32.uint_to_t (nbytes_of_varint (U32.v v))) s)]`
@@ -44,7 +42,6 @@ green (see T7/T8 below).
       `U32.v m == nbytes_of_varint (U32.v v)` unifies `m` to
       `U32.uint_to_t (nbytes_of_varint …)`).  Verified: the full `Data.Codec.Pulse`
       module now discharges all VCs in ~3 min (was: killed at 10 min).
-- [ ] ~~T6 — Query weight.~~  Not needed — the SMTPat lemma is sufficient.
 
 ## Phase 3 — Re-verify the gate
 

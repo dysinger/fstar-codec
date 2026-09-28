@@ -3,7 +3,7 @@
 Data.Codec.Types — Core types, record codec, helpers, lemmas, and combinators.
 This module defines the bidirectional codec framework: a [codec a] is a
 verified serializer/deserializer pair with roundtrip, error-bounds, and
-n-bounds proofs.  All 19 combinators are standalone functions
+n-bounds proofs.  All 20 combinators are standalone functions
 returning codec records — no GADT, no n, no mutual recursion.
 - [codec a] — 8-field record: enc, dec, wfcv, wfcv_prop, rest_cond,
 roundtrip, dec_err_bound, dec_consumed_bound
@@ -17,8 +17,8 @@ All lemmas are called explicitly in roundtrip proofs.  SMTPat is used
 sparingly and only on pattern-matching decoders (bytes_decode,
 lemma_seq_cons_append).
 Every combinator carries its own roundtrip, dec_err_bound, and
-dec_consumed_bound proof.  Z3 rlimits are kept ≤ 80 via structural
-decomposition.  Zero admits across all 19 combinators.
+dec_consumed_bound proof.  Z3 rlimits are kept ≤ 120 via structural
+decomposition.  Zero admits across all 20 combinators.
 
 ---
 
@@ -49,10 +49,6 @@ a negative argument, the wfcv precondition failed first.
 
 ---
 
-Clamp negative int to 0. Safety net; wfcv guards prevent negative inputs.
-
----
-
 Convert [nat] to [U32.t], clamping values ≥ 2^32 to 2^32−1.
 Prefer [u32_of_small_nat] when you have a proof that [n < 4294967296].
 Only use this when clamping is acceptable (e.g., error positions that
@@ -75,9 +71,6 @@ when [wfcv], [wfcv_prop], and [rest_cond] hold
 ---
 
 string_is_ascii: true iff every character in s has code point < 128.
-
----
-
 Use as wfcv guard for text combinators to prevent silent truncation.
 
 ---
@@ -92,10 +85,6 @@ Lemma: [10 < 2^32], proved by normalization.
 
 Convert a nat known to be [< 2^32] into a [U32.t] without clamping.
 Requires proof that [x < 4294967296].
-
----
-
-Convert a nat < 2^32 to U32.t without clamping. Requires proof of bound.
 
 ---
 
@@ -532,12 +521,14 @@ spec + OCaml extraction); only the buffer read/write boundary converts to
 # Data.Codec
 
 Data.Codec — Derived combinators, operator aliases, and character predicates.
-Re-exports all 19 base combinators from [Data.Codec.Types] via [include].
+Re-exports every [Data.Codec.Types] symbol (all 20 combinators, plus
+[one_of]/[take_until] helpers and every lemma) via [include].
 Adds derived combinators built from the base set, backward-compat aliases,
 byte and character classification predicates.
-- 19 base combinators: token, byte_val, satisfy, pure, text, bytes,
+- 20 combinators: token, byte_val, satisfy, pure, text, bytes,
 uint8, word16be, word16le, word32be, word32le, varint, digits_to_int,
-custom, product, sum, map_, count, label
+custom, product, sum, map_, count, label, alt
+- Ad-hoc helpers (not codecs): one_of, take_until (return triples)
 - Derived combinators: choice, then_drop, drop_then, between, optional, take
 - Operator aliases: ( *> ), ( <* ), ( <|> )
 - Character predicates: is_digit, is_upper, is_lower, is_alpha, is_alphanum,

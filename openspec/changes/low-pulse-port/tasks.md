@@ -94,7 +94,15 @@ byte-extraction into a `Lemma`, or use a `noextract` helper predicate) are in
       the leaf to C11 + compiles `libfstar-codec.{dylib,so,a}`.
 - [x] **T4.2 — `flake.nix` package.**  Done: `.#fstar-codec-native`.
 - [x] **T4.3 — Verify.**  Done: GREEN, produces `libfstar-codec.{so,dylib,a}`
-      + `fstar_codec.h` with all 18 API fns + 9 roundtrip lemmas exported.
+      + `fstar_codec.h`.  The emitted header exports exactly **two**
+      dispatch functions — `encode_bytes` and `decode_bytes` — rooted via
+      `--custard_entry` (not `--custard_entry_module`).  The individual
+      `encode_token`/`decode_token`/… leaf functions and the roundtrip
+      lemmas are **not** independently exported (lemmas are erased and the
+      leaves are reached only through the two dispatchers).  See the
+      reviewer-findings W5 note.  (An earlier draft of this task claimed
+      "18 API fns + 9 roundtrip lemmas" — that was never verified and is
+      corrected here.)
 
 ## Definition of done
 

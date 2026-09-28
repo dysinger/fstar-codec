@@ -177,8 +177,18 @@
           shellHook = ''
             export FSTAR_CHECKED="${fstar-checked}"
           '';
+          # Note: z3 is not listed here on purpose.  The `fstar.exe` wrapper
+          # already prepends the correct z3 (4.13.3, from the fstar fork's
+          # .nix/z3.nix) onto its own PATH, so `fstar.exe`/`make check` find
+          # it.  Exposing that z3 as a separate top-level attr triggers a nix
+          # fixpoint stack-overflow (the overlay's `z3 = prev.callPackage
+          # (inputs.fstar + "/.nix/z3.nix")` self-references when inherited
+          # back out).  `git` + `dotnet-sdk_10` are present for the fsharp
+          # target and the fstar bootstrap.
           buildInputs = with pkgs; [
             fstar
+            dotnet-sdk_10
+            git
             ocaml
             ocamlPackages.ocaml-lsp
           ];

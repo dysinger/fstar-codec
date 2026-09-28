@@ -4,9 +4,9 @@
 (**
 Data.Codec.Test.Roundtrip — Concrete roundtrip and error-path tests.
 
-120 concrete tests with ZERO admits.  Each test calls encode, decode,
-and asserts the expected result.  Uses both pure combinators and Stack-based
-buffer I/O for the Pulse leaf codecs.
+111 concrete tests with ZERO admits.  Each test calls encode, decode,
+and asserts the expected result.  Uses pure combinators only; the buffer
+roundtrip tests live in [Data.Codec.Test.Pulse].
 
 @header Data.Codec.Test.Roundtrip
 
@@ -15,9 +15,8 @@ buffer I/O for the Pulse leaf codecs.
   2097151, 2097152, 268435455, 268435456, max)
 - Boundary values for word16 (0, 255, 256, 65535)
 - Boundary values for word32 (0, max)
-- All 19 combinators: roundtrip + error paths
+- All 20 combinators: roundtrip + error paths
 - Derived combinators: choice, then_drop, drop_then, between, optional, take
-- Stack-based roundtrip for all 8 Pulse leaf types + dispatch
 - Character predicates (byte + char, positive + negative)
 - Varint overflow and truncation at every byte boundary
 - Label error propagation
@@ -40,7 +39,7 @@ module U32 = FStar.UInt32
 (** Pure roundtrip tests *)
 
 /// Test that encoding then decoding returns the original value.
-/// Uses pure combinators (no Stack) for fast SMT checking.
+/// Uses pure combinators (no Pulse buffer) for fast SMT checking.
 
 #push-options "--z3rlimit 40"
 
@@ -316,7 +315,7 @@ let test_varint_5byte_oversized () : Lemma
 /// Pulse overflow test: varint_decode_expected (the pure spec of decode_varint)
 /// returns EC_Overflow for 5-byte input with b4 > 15.  Since decode_varint's
 /// ensures clause equates its result to varint_decode_expected, this lemma
-/// validates the Pulse overflow path without requiring Stack buffer allocation.
+/// validates the Pulse overflow path without requiring a Pulse buffer allocation.
 ///
 /// The 5th byte is 0x10uy: U8.v 0x10uy % 128 = 16 > 15, triggering EC_Overflow.
 /// Explicit assert_norm proves this structurally rather than via SMT alone.

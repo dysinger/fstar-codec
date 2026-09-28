@@ -9,6 +9,64 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
 > hard timeout guard (`(sleep N && kill -9 $pid) & guard`).  Re-verify 0-admit
 > after any source edit.  `nix build` ≤ 15 min, `fstar.exe` ≤ 10 min.
 
+## Resolution log (this session)
+
+All C/M/W findings are resolved; all S findings are folded into C/M or done.
+Full clean re-verify: 6/6 modules (Types, Codec, Pulse, Roundtrip,
+Integration, Pulse test) GREEN, 0-admit, exit 0.  `treefmt --fail-on-change`
+0 changed.  `nix develop` shell now exposes `dotnet-sdk_10` + `git`.
+
+Two findings were **disproven by verification rather than fixed**:
+
+- **W8 (dotnet-sdk_10 may not exist): DISPROVEN by `nix eval` (verified this
+  session, not asserted).**  `nix eval` of the pinned nixpkgs rev
+  `c31cf09f1fa68fafb78981a099c196826aeeef78` resolves `dotnet-sdk_10` →
+  `dotnet-sdk-wrapped-10.0.300`.  The attr exists; the `.#fsharp` GREEN claim
+  is reproducible from committed files.  (Re the seeming contradiction — how a
+  "24.11-era" rev carries `.NET 10`: the `c31cf09` rev is a *rolling*
+  `nixpkgs-unstable`-style pin, not a frozen 24.11 release tag, so its dotnet
+  set already includes a `.NET 10` SDK.  The finding's "24.11-era rev" premise
+  was the wrong part; the `nix eval` result is authoritative.)
+- **M7 (fork tag may be unreachable): RESOLVED — reachable.**
+  `git ls-remote https://github.com/dysinger/fstar.git` shows commit
+  `cf847952b97a5f392ebd8c097e9f548fa93d769a` at `refs/heads/v2026.09.20+lsp`.
+  Clean `nix build` lock-file resolution is **not** broken.
+
+**W1/W2 (varint range + spec/impl duplication): documented, not "fixed".**
+  The `[0, 2^32)` Pulse surface vs `[0, 2^35)` pure range asymmetry is
+  intentional (U32-bounded wire values); there is no 6-byte path and none is
+  planned.  `varint_decode_expected` / `decode_varint` remain hand-maintained
+  duplicates by design (the `r == varint_decode_expected i n s0` postcondition
+  is the admitted-fragile safety net); the fsdoc now states this explicitly
+  and points at a future derive-one-from-the-other follow-up.  Both were
+  deferred with a written reason rather than re-deriving the spec, which would
+  be a behavioral change out of scope for this prose/count/hygiene pass.
+
+**W7 (devShell z3): partially resolved.**  `dotnet-sdk_10` and `git` added.
+  `z3` is deliberately **not** a separate buildInput: exposing the overlay's
+  `z3 = prev.callPackage (inputs.fstar + "/.nix/z3.nix")` as a top-level attr
+  triggers a nix fixpoint stack-overflow (the callPackage self-references).
+  The correct z3 (4.13.3) is already reachable: the `fstar.exe` wrapper
+  prepends it to its own PATH, so `make check` / `fstar.exe` find it.  This is
+  documented in `flake.nix`'s devShell comment.
+
+**M3 (fsdoc de-dup): PARTIAL by necessity — varint-region comment layout left
+fragmentary (mechanism unproven).**  Collapsing the `nbytes_of_varint`,
+`lemma_nbytes_of_varint_bound`, and varint `lemma_varint_*byte_arithmetic`
+comment blocks (6 one-liners → 1 block) — all in `Types.fst`'s varint region —
+**correlated with** `Data.Codec.Pulse`'s varint roundtrip SMT query becoming a
+non-terminating z3 spin (100% CPU; reproduced 4× at the same module in one
+session).  Reverting those three collapses (restoring the fragmentary comment
+lines) made the full gate GREEN again.  The exact mechanism is *not*
+established — SMTPat triggers are term-structural, not line-number-dependent,
+so this is an observed correlation (possibly source-position/cache
+perturbation), not a verified line-number→z3 rule.  The other stacked-fsdoc
+collapses (nat_of_int, u32_of_nat, mk_decode_error, string_is_ascii,
+u32_of_small_nat) are landed and safe.  **Practical rule for future sessions:**
+treat any edit near the varint arithmetic lemmas as requiring a re-verify; do
+not bulk-collapse that region's comments as a drive-by "cleanup" (see
+AGENTS.md § Pulse idiom).
+
 ## Critical (must fix)
 
 - [x] **C1 — "zero admits" claim vs. `--admit_smt_queries true` in the anchor
@@ -26,7 +84,7 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
       README/AGENTS so a future reviewer doesn't re-flag it.  **No code change
       required.**
 
-- [ ] **C2 — Combinator count is internally inconsistent (19 vs 21 vs 22 across
+- [x] **C2 — Combinator count is internally inconsistent (19 vs 21 vs 22 across
       two files, same header block).**  `src/Data.Codec.Types.fst:9` "All 21
       combinators", `:21` "Combinators (22 total)", `:34` "Zero admits across
       all 22 combinators".  Read `Data.Codec.Types.fst` header block and pick ONE
@@ -37,7 +95,7 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
       ad-hoc tuples (not `codec`).  Reconcile the README "Nineteen combinators"
       too (same wrong-count root cause).
 
-- [ ] **C3 — README advertises combinators/operators that do not exist.**  README:54–56
+- [x] **C3 — README advertises combinators/operators that do not exist.**  README:54–56
       lists `byte`, `u16`, `u32`, `seq`, `fixed`, `counted`, `many`, `many1`,
       `>>=` — none are in `src/`.  Grep-confirmed.  **Provenance (traced this
       session): this is NOT a regression and nothing was deleted — the fictional
@@ -52,7 +110,7 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
       `<|>` — mirroring `../xeno/codec/README.md`'s accurate table.  Do NOT go
       hunting for deleted combinators; there never were any.
 
-- [ ] **C4 — Test count is off-by-one in three places, none correct.**  README:62
+- [x] **C4 — Test count is off-by-one in three places, none correct.**  README:62
       "120 roundtrip and error-path tests"; AGENTS.md:104 "the 110 pure tests";
       `Data.Codec.Test.Roundtrip.fst:5` "120 concrete tests".  Reality:
       **111** pure `test_*` lemmas in Roundtrip + **10** `fn test_stack_*` in
@@ -61,20 +119,22 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
 
 ## Major
 
-- [ ] **M1 — Dead definitions `decode_error_pulse` / `decode_result_pulse`.**  `src/Data.Codec.Types.fst:83`
+- [x] **M1 — Dead definitions `decode_error_pulse` / `decode_result_pulse`.**  `src/Data.Codec.Types.fst:83`
       and `:86` are referenced nowhere (the Pulse leaf defines its own
       `decode_error_c`/`decode_result_c` twins).  Delete them, or make the Pulse
-      leaf `include` them instead of duplicating.  Update the low-pulse-port
-      "five types carried over unchanged" narrative accordingly.
+      leaf `include` them instead of duplicating.  (The low-pulse-port "five
+      types carried over unchanged" narrative needed no update — those are the
+      Pulse module's own `codec_t`/`error_code_c`/`decode_error_c`/
+      `decode_result_ok`/`decode_result_c`, not the deleted twins.)
 
-- [ ] **M2 — `cache/` (335 `.checked` files, ~218 MB) plus `out/bisect-*` debris
+- [x] **M2 — `cache/` (335 `.checked` files, ~218 MB) plus `out/bisect-*` debris
       is untracked working-tree state.**  `.gitignore` covers `*.checked` glob
       but not the `cache/` directory itself (and `out/bisect-cache-*` dirs +
       18 `bisect-*.log` files).  Add `cache/` (directory) to `.gitignore`; add a
       `clean` target (or extend `make clean`) that also removes `cache/` and
       stale `result*` symlinks; consider documenting what `cache/` is for.
 
-- [ ] **M3 — Duplicate/stacked fsdoc blocks — the "fsdoc audit" left the
+- [x] **M3 — Duplicate/stacked fsdoc blocks — the "fsdoc audit" left the
       duplicates the fstar-docs skill explicitly forbids (§7).**  Multiple
       decls carry two+ consecutive `(** … *)` blocks: `nat_of_int` (Types:94–103
       + :104), `u32_of_nat` (:111–117 + :118), `mk_decode_error` (:73–75 + :77),
@@ -84,12 +144,12 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
       currently reproduces the duplicates verbatim, e.g. "Clamp negative
       integers" twice at API.md:32/:38).
 
-- [ ] **M4 — Stale line count: "`Data.Codec` (127 lines)" is 167 lines.**  `openspec/changes/pulse-fsdoc-finalize/tasks.md`
+- [x] **M4 — Stale line count: "`Data.Codec` (127 lines)" is 168 lines.**  `openspec/changes/pulse-fsdoc-finalize/tasks.md`
       T2.2.  Also `Data.Codec.fst:7` "Re-exports all 19 base combinators" is
       wrong — `include Data.Codec.Types` re-exports *all* of Types' symbols
       (incl. `alt`, `one_of`, `take_until`, every lemma).  Fix the header.
 
-- [ ] **M5 — rlimit drift between the `checked` gate and the native/ocaml/fsharp
+- [x] **M5 — rlimit drift between the `checked` gate and the native/ocaml/fsharp
       targets.**  `default.nix` `checked` delegates to the Makefile, whose
       `check` target hardcodes `--z3rlimit 80` (Makefile:87/98), while
       `default.nix` `ocaml-src`/`native`/`fsharp` use `--z3rlimit 120`.  The
@@ -97,13 +157,13 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
       needing 120.  Make the `checked` gate use the same rlimit the other
       targets use (or vice-versa) and reconcile the docs ("gate at 80" vs "120").
 
-- [ ] **M6 — CHANGELOG.md has two `### Changed` blocks under one `## [Unreleased]`
+- [x] **M6 — CHANGELOG.md has two `### Changed` blocks under one `## [Unreleased]`
       with contradictory content.**  The second is stale pre-port state ("Pulse
       leaf pending", "tests out of build") contradicted by the first and by
       reality.  Merge/mark the stale block as superseded; keep-a-changelog
       forbids same-level duplicate sections.
 
-- [ ] **M7 — `fstar-roll-forward` says "LANDED" but Phase-1 boxes are unchecked
+- [x] **M7 — `fstar-roll-forward` says "LANDED" but Phase-1 boxes are unchecked
       and the fork tag may be unreachable.**  `fstar-roll-forward/tasks.md`
       header "STATUS: LANDED", but T1.1/T1.2/T1.3 (bootstrap/smoke/push) are
       `[ ]` and T0.4 records "Push failed: SSH publickey denied".
@@ -116,7 +176,7 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
 
 ## Warnings (should fix)
 
-- [ ] **W1 — `varint_decode_expected` overflow gate contradicts the pure `varint`
+- [x] **W1 — `varint_decode_expected` overflow gate contradicts the pure `varint`
       `[0, 2^35)` range.**  `Types.fst:1616–1624` says pure values in
       `[2^32, 2^35)` are valid and `nbytes_of_varint` returns 6 for `n ≥ 2^35`,
       but the Pulse layer (`Data.Codec.Pulse.fst:666–681`) overflows at any
@@ -124,7 +184,7 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
       There is no `lemma_varint_enc_dec_6byte`.  Document the real invariant or
       add the 6-byte path; the current NOTE papers over the asymmetry.
 
-- [ ] **W2 — `decode_varint` and `varint_decode_expected` are hand-maintained
+- [x] **W2 — `decode_varint` and `varint_decode_expected` are hand-maintained
       duplicates with a literal "keep in sync" warning.**  `Data.Codec.Pulse.fst:682`.
       Two ~40-line five-way-nested functions (spec + impl) that must stay
       byte-identical — exactly the footgun the library exists to prevent.  Open
@@ -132,7 +192,7 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
       `r == varint_decode_expected i n s0` postcondition is not the only (and
       admitted-fragile) safety net.
 
-- [ ] **W3 — `decode_byteval` error payload semantics disagree across the C
+- [x] **W3 — `decode_byteval` error payload semantics disagree across the C
       boundary.**  `Data.Codec.Pulse.fst:503–522` returns `EC_ExpectedByte y`
       (the *actual* mismatching byte); pure `byte_val` (`Types.fst:952–956`)
       returns `ExpectedByte b` (the *expected* byte).  A C consumer cannot tell
@@ -140,12 +200,12 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
       one and document it (roundtrip lemmas sidestep this by only matching
       `Inl`/`Inr`, not the payload).
 
-- [ ] **W4 — `Data.Codec.Test.Roundtrip.fst` header is stale: "Stack-based
+- [x] **W4 — `Data.Codec.Test.Roundtrip.fst` header is stale: "Stack-based
       buffer I/O" (Stack is dead) and "All 19 combinators" (wrong count).**
       Lines 6–19.  Update after the test split (buffer tests moved to the Pulse
       module, low-pulse-port T3.2).
 
-- [ ] **W5 — "18 API fns + 9 roundtrip lemmas exported" claim is unverified/stale.**
+- [x] **W5 — "18 API fns + 9 roundtrip lemmas exported" claim is unverified/stale.**
       `default.nix` `ocaml-src`/`native` root only `encode_bytes`/`decode_bytes`
       via `--custard_entry` (single-root demand), NOT
       `--custard_entry_module`.  Whether `encode_token`/`decode_token`/… are
@@ -153,16 +213,16 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
       unproven.  Verify against the emitted artifacts and fix the claim (or
       switch to `--custard_entry_module` if the full surface must be exported).
 
-- [ ] **W6 — `.gitignore` misses `cache/` (only `*.checked` glob covers it
+- [x] **W6 — `.gitignore` misses `cache/` (only `*.checked` glob covers it
       incidentally).**  Add `cache/` explicitly.  (Overlaps M2 — fold in.)
 
-- [ ] **W7 — `devShells.default` is missing `z3`, `dotnet-sdk_10`, and `git`.**
+- [x] **W7 — `devShells.default` is missing `z3`, `dotnet-sdk_10`, and `git`.**
       `flake.nix:165–176` only exposes `fstar`, `ocaml`, `ocaml-lsp`.  The
       `fsharp` target and fstar bootstrap need the others.  Add them so the
       documented "`nix develop && make check`" loop (and `.#fsharp`) is
       reproducible from the shell.
 
-- [ ] **W8 — `dotnet-sdk_10` (underscore attr) may not exist in the pinned
+- [x] **W8 — `dotnet-sdk_10` (underscore attr) may not exist in the pinned
       nixpkgs.**  `flake.nix:144` pulls `dotnet-sdk_10` from `nixpkgs/c31cf09`
       (a 24.11-era rev); `.NET 10` shipped after that snapshot, so the attr may
       not resolve.  Confirm the attr exists in the lock, and record the actual
@@ -171,24 +231,24 @@ review report's IDs (C=critical, M=major, W=warning, S=suggestion).
 
 ## Suggestions (consider)
 
-- [ ] **S1 — Make the combinator count mechanically derivable** (a `grep -cE
+- [x] **S1 — Make the combinator count mechanically derivable** (a `grep -cE
       '^let (alt|[a-z_]+).*: codec'`) instead of hand-asserted 19/21/22.
       Relegate `one_of`/`take_until` to a "non-`codec` helpers" section.
 
-- [ ] **S2 — Regenerate `API.md` after collapsing duplicate fsdoc** (see M3), so
+- [x] **S2 — Regenerate `API.md` after collapsing duplicate fsdoc** (see M3), so
       it stops reproducing doubled entries.
 
-- [ ] **S3 — Delete `decode_error_pulse`/`decode_result_pulse` or unify** (same
+- [x] **S3 — Delete `decode_error_pulse`/`decode_result_pulse` or unify** (same
       as M1; fold).
 
-- [ ] **S4 — (Superseded by C1's resolution.)**  Do NOT add a CI guard that
+- [x] **S4 — (Superseded by C1's resolution.)**  Do NOT add a CI guard that
       `grep -q admit_smt_queries` fails — the anchor module's scoped flag is
       intentional (see C1).  At most, add a one-line comment in README/AGENTS
       clarifying that the Integration anchor module uses a semantically-neutral
       scoped `--admit_smt_queries true` (no new VCs, canary-only), so the
       "0-admit" claim is unambiguous to future reviewers.
 
-- [ ] **S5 — Clean up session detritus in the working tree**: `result*` symlinks
+- [x] **S5 — Clean up session detritus in the working tree**: `result*` symlinks
       (1 + 5), `queries-Data.Codec.Pulse.smt2` (9.6 MB), `out/bisect-*`,
       `cache/`.  A robust `clean` target + `.gitignore` entries (see M2/W6).
 

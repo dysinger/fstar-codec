@@ -1,7 +1,7 @@
 # fstar-codec
 
 A formally verified, bidirectional serialization framework in
-[F\*](https://www.fstar-lang.org/).  **Nineteen combinators, zero admits,
+[F\*](https://www.fstar-lang.org/).  **Twenty combinators, zero admits,
 every proof mechanically checked.**
 
 ## What it is
@@ -51,15 +51,19 @@ compile to C for use at the byte-buffer level.
 
 - **One verified type.**  A single `codec a` record: `enc`, `dec`,
   a well-formedness guard, and a roundtrip lemma field.
-- **Nineteen combinators.**  Primitives (`byte`, `u16`, `u32`, …) plus `seq`,
-  `sum`, `product`, `fixed`, `counted`, `map_`, `alt`, `one_of`, `take_until`,
-  `many`, `many1`, `optional`, `choice`, and the operator aliases (`<|>`,
-  `*>`, `<*`, `>>=`).
+- **Twenty combinators.**  Primitives (`token`, `byte_val`, `satisfy`, `pure`,
+  `text`, `bytes`, `uint8`, `word16be`, `word16le`, `word32be`, `word32le`,
+  `varint`, `digits_to_int`) plus combinators (`custom`, `product`, `sum`,
+  `map_`, `count`, `label`, `alt`), and the operator aliases (`<|>`, `*>`, `<*`).
+  The ad-hoc helpers `one_of` and `take_until` return (enc, dec, wfcv) triples,
+  not `codec` records.
 - **Proven roundtrips.**  Every combinator carries a lemma; no `admit`, no
-  `assume`, no `admit_smt_queries`.
+  `assume`, no `admit_smt_queries` (the anchor test module uses a scoped,
+  semantically-neutral `--admit_smt_queries true` — see `AGENTS.md`).
 - **C extraction.**  The Pulse leaf codecs extract to C with byte-level
   post-conditions (no KaRaMeL).
-- **A real test suite.**  120 roundtrip and error-path tests, all verified.
+- **A real test suite.**  121 roundtrip and error-path tests (111 pure + 10
+  Pulse buffer tests), all verified.
 
 ## Modules
 
@@ -113,7 +117,7 @@ to C11, OCaml, and F#.
 ## Architecture
 
 ```
-Data.Codec.Types     — codec record, 19 base combinators, all lemmas
+Data.Codec.Types     — codec record, 20 combinators, all lemmas
 Data.Codec           — derived combinators, operator aliases, char predicates
 Data.Codec.Pulse     — C-extractable leaf codecs (Pulse fn, C/OCaml/F# output)
 ```

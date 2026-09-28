@@ -75,7 +75,8 @@ all verify; `TST_MODS` is populated.
 
 ### GREEN (verified this session, F* `v2026.09.20+lsp`)
 
-Full gate verified GREEN at 0-admit (`--z3rlimit 80`):
+Full gate verified GREEN at 0-admit (`--z3rlimit 120`, current Makefile
+default; the earlier `80` below was the pre-M5 setting):
 
 - `Data.Codec.Types` + `Data.Codec` + `Data.Codec.Pulse` + the three test
   modules (`Data.Codec.Test.Roundtrip` + `Integration` + `Pulse`).
@@ -101,12 +102,15 @@ roundtrip lemmas automatically (the old `lemma_word32_shift_bytes` /
 The two test modules are now Pulse-portable and re-added to `TST_MODS` (the
 full gate — 3 src + 3 test modules — verifies GREEN at 0-admit).  Two notes:
 
-- `test/Data.Codec.Test.Roundtrip.fst` — the 110 pure tests stay in this
+- `test/Data.Codec.Test.Roundtrip.fst` — the 111 pure tests stay in this
   **non**-Pulse module; the 10 buffer roundtrip tests moved to a **new**
   `test/Data.Codec.Test.Pulse.fst` (`#lang-pulse`), because Pulse reserves the
   `label` keyword which the pure tests use as a combinator + record field.
-- `test/Data.Codec.Test.Integration.fst` — dropped the dead `_pulseL0`…`_pulseL8`
-  anchors (pre-roll-forward helper lemmas) and re-anchored the stack tests.
+- `test/Data.Codec.Test.Integration.fst` — dropped the dead pre-roll-forward
+  `_pulseL0`…`_pulseL6` helper anchors and re-anchored the stack tests.  The
+  remaining `_pulseL7a` / `_pulseL8` / `_pulseL8b` anchors are **live**, not
+  dead: they anchor `varint_encode_pred` / `varint_decode_expected` /
+  `lemma_varint_roundtrip_smtpat`.
 
 See [`openspec/changes/low-pulse-port/tasks.md`](openspec/changes/low-pulse-port/tasks.md)
 T3.2/T3.3 for the full detail.
@@ -208,25 +212,75 @@ idiom is now applied in `src/Data.Codec.Pulse.fst`.  Key facts:
   The canonical order (verified 0-admit) is: byteval, token, uint8,
   word16be, word16le, word32be, word32le, varint(-pred/-spec), then smtpat,
   varint-roundtrip, encode_decode_match.
+- **The varint-region comment layout in `Types.fst` is SMT-fragile —
+  observed, but the *mechanism* is unproven (discovered in the
+  reviewer-findings session).**  Collapsing the fragmentary `(** … *)`
+  one-liners around `nbytes_of_varint` / `lemma_nbytes_of_varint_bound` /
+  `lemma_varint_*byte_arithmetic` into single blocks **correlated with** the
+  Pulse varint roundtrip becoming a non-terminating z3 spin (reproduced 4× in
+  one session; reverting the collapse restored GREEN).  The exact cause is
+  *not* established: the plausible reading is source-position/cache
+  perturbation of the `lemma_varint_roundtrip_smtpat`
+  (`[SMTPat (varint_decode_expected i (U32.uint_to_t (nbytes_of_varint (U32.v v))) s)]`)
+  trigger, but SMTPat triggers are term-structural, so this is an *observed
+  correlation*, not a verified line-number→z3 mechanism.  **Practical rule:**
+  treat any edit near the varint arithmetic lemmas as requiring a re-verify,
+  and don't bulk-collapse that region's comments as a drive-by "cleanup".  The
+  other stacked-fsdoc collapses (nat_of_int, u32_of_nat, mk_decode_error,
+  string_is_ascii, u32_of_small_nat) are safe and landed.
 
 ## Definition of done
 
 The **port to F\* `v2026.09.20` is functionally complete** and the build gate
-is GREEN at 0-admit.  This session (the `pulse-fsdoc-finalize` change) landed
-(fsdoc/regroup + real nix gate), and a subsequent uncompromising review
-surfaced a set of **documentation-truthfulness and hygiene deficiencies** that
-are tracked, unfiltered, as the next session's work:
+is GREEN at 0-admit.  The subsequent **reviewer-findings** cleanup (all C/M/W/S
+findings) is **DONE this session** — see
+[`openspec/changes/reviewer-findings/tasks.md`](openspec/changes/reviewer-findings/tasks.md)
+(and its "Resolution log"), which now records every finding as checked off
+with a written resolution.  Summary of what landed:
 
-> **Next steps (canonical):** [`openspec/changes/reviewer-findings/tasks.md`](openspec/changes/reviewer-findings/tasks.md)
-> (and [`proposal.md`](openspec/changes/reviewer-findings/proposal.md)).
-> Main items: C2/C4 (combinator count 19/21/22 + test count 110/120 drift —
-> both must be reconciled to a mechanically-verifiable number), C3 (README
-> advertises `byte`/`u16`/`u32`/`seq`/`fixed`/`counted`/`many`/`many1`/`>>=`
-> — never existed, traced back to commit `fe61809`, not a deletion), plus
-> M1–M7/W1–W8 (dead `_pulse` types, duplicate fsdoc, rlimit drift, CHANGELOG
-> double-section, fork-tag + `.NET 10` reachability) and S1–S5 hygiene.  C1 is
-> resolved as by-design (the anchor module's scoped `--admit_smt_queries true`
-> is semantically neutral; anchors add no new VCs, see tasks.md).
+- **Counts reconciled to mechanically-verifiable values:** 20 combinators
+  (the `codec a`-returning constructors) + 2 ad-hoc helpers (`one_of`,
+  `take_until`, which return triples); **121 tests** = 111 pure `test_*` in
+  `Data.Codec.Test.Roundtrip` + 10 `fn test_stack_*` in `Data.Codec.Test.Pulse`.
+- **README combinator/operator list** rewritten to enumerate only the real 20
+  constructors + `*>`, `<*`, `<|>` (the fictional `byte`/`u16`/`u32`/`seq`/
+  `fixed`/`counted`/`many`/`many1`/`>>=` list, from commit `fe61809`, is gone).
+- **Dead types deleted** (`decode_error_pulse`/`decode_result_pulse`),
+  **duplicate fsdoc collapsed** (nat_of_int, u32_of_nat, mk_decode_error,
+  string_is_ascii, u32_of_small_nat — the varint-group wall was *deliberately
+  left fragmentary*, see the Pulse-idiom note below), `API.md` de-duplicated,
+  CHANGELOG double-section merged.
+- **rlimit drift fixed:** Makefile `check` now uses `--z3rlimit 120` (matching
+  `default.nix` ocaml/native/fsharp), docs reconciled.
+- **Hygiene:** `.gitignore` covers `cache/`; `make clean` removes `cache/` +
+  stale `result*`; devShell exposes `dotnet-sdk_10` + `git` (z3 stays reachable
+  via the `fstar.exe` wrapper — exposing the overlay's z3 separately triggers
+  a nix fixpoint stack-overflow, documented in flake.nix).
+- **Verified this session:** fork commit `cf847952` IS reachable (M7 resolved,
+  not a landmine) and `dotnet-sdk_10` (= 10.0.300) DOES resolve in the pinned
+  nixpkgs `c31cf09` (W8 disproven).
+- **Re-verified 0-admit:** full clean `make check` — all 6 modules GREEN,
+  0-admit, exit 0.
+
+C1 remains resolved as by-design (the anchor module's scoped
+`--admit_smt_queries true` is semantically neutral; anchors add no new VCs —
+see tasks.md).  W1/W2 (varint `[0,2^32)` vs `[0,2^35)` range asymmetry and the
+hand-maintained `varint_decode_expected`/`decode_varint` spec/impl pair) are
+**documented**, not "fixed" — a written deferral, not a bug.
+
+> **Next steps (canonical):** a second adversarial review of the uncommitted
+> above found residual self-contradictions and false "done" claims — see
+> [`openspec/changes/review-followup-2/tasks.md`](openspec/changes/review-followup-2/tasks.md)
+> (and its [`proposal.md`](openspec/changes/review-followup-2/proposal.md)).
+> Summary: AGENTS.md claims the varint fsdoc was *both* "collapsed" and "left
+> fragmentary" (C1); `_pulseL*` anchors are declared "dropped" but still exist
+> (C2); the Integration anchor-numbering comment is stale (C3); plus
+> `*<`→`<*` typo (W1), rlimit 80-vs-120 prose drift in AGENTS/API/Types-header
+> (W2–W4), `CHANGELOG` "19+" count (W5), 167-vs-168 M4 disagreement (W6),
+> S5 detritus never actually removed (W7), and the dotnet-sdk_10 "DISPROVEN"
+> verdict self-contradictory (W8).  Two claims should be re-softened from
+> "deterministic mechanism" to "observed correlation" (varint line-number
+> SMT-sensitivity, S1) or "unverified" (dotnet resolution, W8).
 
 ## Build commands
 

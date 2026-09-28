@@ -6,7 +6,7 @@ Data.Codec.Types — Core types, record codec, helpers, lemmas, and combinators.
 
 This module defines the bidirectional codec framework: a [codec a] is a
 verified serializer/deserializer pair with roundtrip, error-bounds, and
-n-bounds proofs.  All 21 combinators are standalone functions
+n-bounds proofs.  All 20 combinators are standalone functions
 returning codec records — no GADT, no n, no mutual recursion.
 
 @header Data.Codec.Types
@@ -18,10 +18,11 @@ returning codec records — no GADT, no n, no mutual recursion.
 - [decode_error] — error record with position and optional label
 - [decode_result a] — either an error or a value + bytes consumed
 
-@section Combinators (22 total)
+@section Combinators (20 total)
 Leaf: token, byte_val, satisfy, pure, text, bytes, uint8,
        word16be, word16le, word32be, word32le, varint, digits_to_int
-Combinator: custom, product, sum, map_, count, label, alt, one_of, take_until
+Combinator: custom, product, sum, map_, count, label, alt
+Helpers (not codecs): one_of, take_until (return ad-hoc triples)
 
 @section Lemmas
 All lemmas are called explicitly in roundtrip proofs.  SMTPat is used
@@ -30,9 +31,10 @@ lemma_seq_cons_append).
 
 @section Proofs
 Every combinator carries its own roundtrip, dec_err_bound, and
-dec_consumed_bound proof.  Z3 rlimits are kept ≤ 80 via structural
-decomposition.  Zero admits across all 22 combinators.  The [one_of] and
-[take_until] roundtrips are proven per-instantiation (concrete literal /
+dec_consumed_bound proof.  Z3 rlimits are kept ≤ 120 via structural
+decomposition.  Zero admits across all 20 combinators.  The [one_of] and
+[take_until] helpers return ad-hoc (enc, dec, wfcv) triples, not [codec]
+records; their roundtrips are proven per-instantiation (concrete literal /
 delimiter sets) rather than as a generic [codec] field — see their NOTEs.
 *)
 module Data.Codec.Types
@@ -71,19 +73,13 @@ type error_code =
 type decode_error = { err_code: error_code; err_pos: nat; label: option string }
 
 (** Construct a [decode_error] with no label.
-    Use this instead of record literal to ensure [label = None] by default. *)
-(** Construct a decode_error with no label. *)
+
+    Use this instead of a record literal to ensure [label = None] by default. *)
 let mk_decode_error (c: error_code) (n: nat) : decode_error =
   { err_code = c; err_pos = n; label = None }
 
 (** Result of decoding: either an error or a value plus bytes consumed. *)
 type decode_result (a: Type0) = either decode_error (a & nat)
-
-(** Pulse-layer variant of decode error using [U32.t] position. *)
-type decode_error_pulse = { locode: error_code; lopos: U32.t }
-
-(** Pulse-layer variant of decode result. *)
-type decode_result_pulse (a: Type0) = either decode_error_pulse (a & U32.t)
 
 (** Clamp negative integers to 0.
 
@@ -91,7 +87,6 @@ type decode_result_pulse (a: Type0) = either decode_error_pulse (a & U32.t)
     reject negative values before reaching encoders, so this clamping
     is only a safety net for unguarded calls.  If [nat_of_int] receives
     a negative argument, the wfcv precondition failed first. *)
-(** Clamp negative int to 0. Safety net; wfcv guards prevent negative inputs. *)
 let nat_of_int (x: int) : nat = if x < 0 then 0 else x
 
 (** Convert [nat] to [U32.t], clamping values ≥ 2^32 to 2^32−1.
@@ -99,7 +94,6 @@ let nat_of_int (x: int) : nat = if x < 0 then 0 else x
     Prefer [u32_of_small_nat] when you have a proof that [n < 4294967296].
     Only use this when clamping is acceptable (e.g., error positions that
     are already bounded by buffer length). *)
-(** Convert nat to U32.t, clamping values ≥ 2^32. *)
 let u32_of_nat (n: nat) : U32.t =
   U32.uint_to_t (if n > 4294967295 then 4294967295 else n)
 
@@ -155,8 +149,9 @@ let string_to_bytes (s: string) : Tot byte_seq =
     U8.uint_to_t (FStar.Char.int_of_char c % 256))
     (FStar.String.list_of_string s))
 
-(** string_is_ascii: true iff every character in s has code point < 128. *)
-(** Use as wfcv guard for text combinators to prevent silent truncation. *)
+(** string_is_ascii: true iff every character in s has code point < 128.
+
+    Use as wfcv guard for text combinators to prevent silent truncation. *)
 let string_is_ascii (s: string) : Tot bool =
   FStar.List.Tot.for_all (fun (c: FStar.Char.char) ->
     FStar.Char.int_of_char c < 128
@@ -254,8 +249,8 @@ let lemma_10_lt_u32max () : Lemma (10 < 4294967296) =
   assert_norm (10 < 4294967296)
 
 (** Convert a nat known to be [< 2^32] into a [U32.t] without clamping.
+
     Requires proof that [x < 4294967296]. *)
-(** Convert a nat < 2^32 to U32.t without clamping. Requires proof of bound. *)
 let u32_of_small_nat (x: nat{x < 4294967296}) : Tot U32.t =
   assert_norm (pow2 32 = 4294967296);
   U32.uint_to_t x
@@ -2377,7 +2372,7 @@ let rec one_of_mem (#a:eqtype) (pairs: list (a & list byte)) (v: a) : Tot bool (
     [requires] opacity documented in fstar-proofs §44.  The concrete per-site
     proof is the lower-risk path and is what xml/json needs first. *)
 
-(** Combinator 21: one_of — ordered terminated-literal choice (encode/decode).
+(** Helper 21: one_of — ordered terminated-literal choice (encode/decode).
 
     @param pairs The [(value, literal)] pairs, value type [a: eqtype].
     NOT a full [codec] (roundtrip is per-instantiation; see the NOTE above).
@@ -2492,7 +2487,7 @@ let lemma_byte_val_rest_cond_eq (b: byte) (r: byte_seq) : Lemma
   ((byte_val b).rest_cond () r == True)
   = ()
 
-(** Combinator 22: take_until — delimiter-terminated content run.
+(** Helper 22: take_until — delimiter-terminated content run.
 
     Scans a LIST-level content run that stops exactly at a multi-byte
     delimiter.  This is the verified primitive for delimiter-aware content

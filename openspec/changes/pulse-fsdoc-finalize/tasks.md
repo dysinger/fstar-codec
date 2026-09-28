@@ -10,7 +10,8 @@
 
 ## Phase 1 — Regroup + fsdoc `Data.Codec.Pulse` (T1 from codec-cleanup-formatting)
 
-The current order in `src/Data.Codec.Pulse.fst` (1107 lines) is:
+The (pre-refactor) order in `src/Data.Codec.Pulse.fst` (1107 lines at the time;
+1282 lines now) is:
 types → `encode_token` / `encode_byteval` / `encode_uint8` / `encode_word16be` /
 `encode_word32be` / `encode_word16le` / `encode_word32le` / `varint_encode_pred`
 + `encode_varint` → decoders (same ad-hoc order) → dispatchers → lemmas
@@ -52,11 +53,11 @@ Target order (alphabetical within each group):
 
 ## Phase 2 — fsdoc audit on the pure spec (T1.6 from codec-cleanup-formatting)
 
-- [x] **T2.1 — `Data.Codec.Types` (2644 lines).**  Every public `type`, `let`
+- [x] **T2.1 — `Data.Codec.Types` (2644 lines at the time; 2671 now).**  Every public `type`, `let`
       codec/combinator, and `Lemma` carries `(** … *)` fsdoc.  Filled the gaps
       (the `alt_*` helper group, `varint`, `custom`, `lemma_varint_enc_dec_{1..5}byte`,
       `lemma_{bytes_decode_prefix,varint_decode_shift,digits_*}_*`, etc.).
-- [x] **T2.2 — `Data.Codec` (127 lines).**  Same audit (derived combinators,
+- [x] **T2.2 — `Data.Codec` (168 lines).**  Same audit (derived combinators,
       operator aliases, char predicates, backward-compat aliases) — all fsdoc'd.
 - [x] **T2.3 — Re-verify both** after the doc-only edits — GREEN, 0-admit.
 

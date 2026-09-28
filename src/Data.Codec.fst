@@ -4,7 +4,8 @@
 (**
 Data.Codec — Derived combinators, operator aliases, and character predicates.
 
-Re-exports all 19 base combinators from [Data.Codec.Types] via [include].
+Re-exports every [Data.Codec.Types] symbol (all 20 combinators, plus
+[one_of]/[take_until] helpers and every lemma) via [include].
 
 @header Data.Codec
 *)

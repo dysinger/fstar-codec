@@ -431,6 +431,12 @@ fn encode_varint (v: U32.t) (b: A.array U8.t) (i: U32.t)
     @param n The number of available bytes from [i].
     @returns [DR_Inr] (n = 1, value = 0) on match; else [DR_Inl] with
              [EC_ExpectedByte] (read byte differs) or [EC_UnexpectedEndOfInput].
+    NOTE: the [EC_ExpectedByte] payload is the *actual* mismatching byte
+    ([y] in the body), NOT the expected byte [x].  This diverges from the
+    pure [DC.byte_val], whose [ExpectedByte] payload is the *expected* byte
+    [b].  C consumers must read [EC_ExpectedByte] as "the byte actually
+    present".  (Roundtrip lemmas only match [DR_Inl]/[DR_Inr], never the
+    payload, so this asymmetry is unobservable to them.)
     Value matches [(DC.byte_val x).dec]. *)
 fn decode_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
@@ -699,9 +705,24 @@ fn decode_word32le (b: A.array U8.t) (i: U32.t) (n: U32.t)
   }
 }
 
-(** varint_decode_expected: pure spec for decode_varint. *)
-(** WARNING: keep in sync with decode_varint body. *)
-(** spec-only — noextract so Custard skips it. *)
+(** varint_decode_expected: pure spec for decode_varint.
+
+    WARNING: hand-maintained duplicate of [decode_varint]'s body — the two
+    MUST stay byte-identical (the [fn]'s postcondition [r ==
+    varint_decode_expected i n s0] is the only safety net, and it is only as
+    strong as this spec faithfully mirrors the impl).  See AGENTS.md / the
+    reviewer-findings W2 follow-up on deriving one from the other.
+
+    Range asymmetry (W1): the 5th byte is constrained to [% 128 <= 15], so
+    the Pulse layer accepts exactly [0, 2^32) — whereas the pure [varint]
+    combinator's wfcv admits [0, 2^35) and [nbytes_of_varint] only returns 6
+    for n >= 2^35.  A 5-byte value whose 5th byte is 16..127 overflows U32 and
+    is rejected with [EC_Overflow].  There is no 6-byte Pulse path and no
+    [lemma_varint_enc_dec_6byte] — the U32-bounded Pulse encode/decode is the
+    deliberate, narrower surface (typical protocols need 32-bit wire values
+    only).
+
+    spec-only — noextract so Custard skips it. *)
 noextract
 let varint_decode_expected (i: U32.t) (n: U32.t) (s: Seq.seq U8.t { U32.v i + U32.v n <= Seq.length s }) : decode_result_c =
   if U32.lt n 1ul then

@@ -8,6 +8,10 @@ result-*
 # Makefile build output (check/krml/demo all write under out/)
 out/
 
+# F* `.checked` cache directory (hand-run `fstar.exe --cache_checked_modules`
+# without `--odir` drops the cache in cwd/ `cache/`).
+cache/
+
 # Throwaway Pulse-port spike scratch dir (see AGENTS.md § Pulse-port spike)
 spike/
 

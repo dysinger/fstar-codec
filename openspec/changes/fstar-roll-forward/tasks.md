@@ -45,6 +45,8 @@ last tagged `v2025.12.15+lsp`); upstream `FStarLang/FStar` has none.  Rolling to
       hover/completion) was NOT ported — `v2026.09.20` refactored
       `find_in_module_with_includes` into a `_gen` form, so this needs careful
       re-integration.  Non-blocking for the LSP server to build/run.
+      *(Out of scope for `fstar-codec` — `../fstar` fork chore; defer, not a
+      build blocker.)*
 
 ## Phase 1 — Build + verify the forked compiler
 
@@ -52,11 +54,18 @@ last tagged `v2025.12.15+lsp`); upstream `FStarLang/FStar` has none.  Rolling to
       stage0 → stage1 verify → stage2 extract → stage3).  Fix any F*/OCaml
       drift the static audit missed.  Gate: a `stage3/out/bin/fstar.exe` that
       accepts `--lsp`.
+      *(Out of scope for `fstar-codec` — upstream `../fstar` fork chore; the
+      fork already builds via the flake's `fstar` derivation, this documents
+      the manual fork-repo bootstrap.)*
 - [ ] **T1.2 — Smoke-test LSP.**  `fstar.exe --lsp` starts and speaks LSP
       (`initialize` → `initialized` handshake) without the `repl_stdin`/IDE
       interleaving regressions the t/lsp branch fixed.
+      *(Out of scope for `fstar-codec` — `../fstar` fork chore.)*
 - [ ] **T1.3 — Push the branch.**  With working credentials (HTTPS token or
       key), `git push -u origin v2026.09.20+lsp`.
+      *(Out of scope for `fstar-codec` — blocked on `../fstar` GitHub
+      credentials; the branch/commit is already reachable for `nix build` via
+      `git ls-remote`, so this is repo-publication, not a build gate.)*
 
 ## Phase 2 — Point fstar-codec at the new toolchain — DONE
 
@@ -93,7 +102,9 @@ last tagged `v2025.12.15+lsp`); upstream `FStarLang/FStar` has none.  Rolling to
 
 - [x] **T3.1 — Probe.**  Not applicable until the leaf is Pulse.  The pure
       spec (`Types`/`Codec`) extracts fine via OCaml; the leaf does not yet.
-- [ ] **T3.2 / T3.3.**  Deferred to the Pulse-port change.
+- [x] **T3.2 / T3.3 — Pulse port.**  **Done in `low-pulse-port`** (8 encoders +
+      8 decoders + `encode_bytes`/`decode_bytes` dispatch, 0-admit, C11 via
+      Custard).  The leaf is ported; nothing remains here.
 
 ## Phase 4 — Decide rust/wasm fate + commit
 
@@ -102,6 +113,8 @@ last tagged `v2025.12.15+lsp`); upstream `FStarLang/FStar` has none.  Rolling to
       was deleted upstream.  The only C path is Custard, gated on the Pulse
       port of `Data.Codec.Pulse`.  Documented in README + AGENTS.md.
 - [ ] **T4.2 — Commit.**  Pending review.
+      *(Folded into the landed `pulse-fsdoc-finalize` and `reviewer-findings`
+      commits; no standalone roll-forward commit is pending.)*
 
 ## Definition of done
 
