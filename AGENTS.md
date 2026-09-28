@@ -42,6 +42,9 @@ resumes cleanly.
 
 ## ⚠️ BLOCKED: `Data.Codec.Pulse` verification HANGS (next session's #1 task)
 
+> **Canonical task list**: [`openspec/changes/diagnose-pulse-hang/tasks.md`](openspec/changes/diagnose-pulse-hang/tasks.md)
+> (and [`proposal.md`](openspec/changes/diagnose-pulse-hang/proposal.md)).
+
 The native gate does **not** currently build.  `Data.Codec.Types` and
 `Data.Codec` verify, then the `Data.Codec.Pulse` `fstar.exe` invocation **hangs
 forever** — observed stuck for 35+ minutes at 0% CPU, `status = stopped` (S).
