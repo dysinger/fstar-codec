@@ -374,6 +374,8 @@ let lemma_bytes_decode_cons (b: byte) (tl: list byte) (s: byte_seq) : Lemma
   [SMTPat (bytes_decode (b :: tl) s)] = ()
 
 #push-options "--z3rlimit 80"
+(** [lemma_bytes_decode_prefix]: decoding a byte-list depends only on a bounded
+    prefix of the input. Extends [bytes_decode] to equal-length slices. *)
 let rec lemma_bytes_decode_prefix (bs: list byte) (s: byte_seq) (i n m: nat)
   : Lemma
     (requires
@@ -478,6 +480,8 @@ let shift_result (#a:Type) (p: nat) (r: decode_result a) : decode_result a =
   | Inl err -> Inl ({err with err_pos = err.err_pos + p})
 
 #push-options "--z3rlimit 80"
+(** [lemma_varint_decode_shift]: decoding from an offset equals shifting the
+    decoded result by that offset.  Key to the [varint] prefix-invariance proof. *)
 let rec lemma_varint_decode_shift
   (s: byte_seq) (n p: nat) (value: int) (shift: nat)
   : Lemma
@@ -710,6 +714,7 @@ let rec lemma_all_digits_append_helper (ds1 ds2: list byte) : Lemma
 #pop-options
 
 #push-options "--z3rlimit 40"
+(** [lemma_digits_encode_all_digits_helper]: [digits_encode] emits only digit bytes. *)
 let rec lemma_digits_encode_all_digits_helper (n: nat) : Lemma
   (ensures all_digits (digits_encode n))
   (decreases n)
@@ -724,6 +729,7 @@ let rec lemma_digits_encode_all_digits_helper (n: nat) : Lemma
 #pop-options
 
 #push-options "--z3rlimit 40"
+(** [lemma_acc_digits_append_helper]: accumulated digit decoding appends cleanly. *)
 let rec lemma_acc_digits_append_helper (ds1 ds2: list byte) (a: int) : Lemma
   (ensures acc_digits (ds1 @ ds2) a == acc_digits ds2 (acc_digits ds1 a))
   (decreases ds1)
@@ -734,6 +740,7 @@ let rec lemma_acc_digits_append_helper (ds1 ds2: list byte) (a: int) : Lemma
 #pop-options
 
 #push-options "--z3rlimit 80"
+(** [lemma_acc_digits_encode_helper]: accumulated digit encoding appends cleanly. *)
 let rec lemma_acc_digits_encode_helper (n: nat) : Lemma
   (ensures acc_digits (digits_encode n) 0 == n)
   (decreases n)
@@ -754,6 +761,7 @@ let nat_add (a b: nat) : nat = a + b
 let nat_incr (n: nat) : nat = n + 1
 
 #push-options "--z3rlimit 80"
+(** [lemma_digits_decode_shift]: digit decoding from an offset shifts by that offset. *)
 let rec lemma_digits_decode_shift
   (f: int -> bool) (s: byte_seq) (k: nat) (i: nat) (a: int)
   : Lemma
@@ -1421,6 +1429,7 @@ let lemma_varint_5byte_arithmetic (n: nat) : Lemma
 #pop-options
 
 #push-options "--z3rlimit 10"
+(** [lemma_varint_enc_dec_1byte]: a 1-byte varint (n < 128) encodes and decodes back. *)
 let lemma_varint_enc_dec_1byte (n: nat) (r: byte_seq) : Lemma
   (requires n < 128)
   (ensures (
@@ -1432,6 +1441,7 @@ let lemma_varint_enc_dec_1byte (n: nat) (r: byte_seq) : Lemma
 #pop-options
 
 #push-options "--z3rlimit 20"
+(** [lemma_varint_enc_dec_2byte]: a 2-byte varint (128 ≤ n < 16384) roundtrips. *)
 let lemma_varint_enc_dec_2byte (n: nat) (r: byte_seq) : Lemma
   (requires 128 <= n /\ n < 16384)
   (ensures (
@@ -1453,6 +1463,7 @@ let lemma_varint_enc_dec_2byte (n: nat) (r: byte_seq) : Lemma
 #pop-options
 
 #push-options "--z3rlimit 20"
+(** [lemma_varint_enc_dec_3byte]: a 3-byte varint (16384 ≤ n < 2097152) roundtrips. *)
 let lemma_varint_enc_dec_3byte (n: nat) (r: byte_seq) : Lemma
   (requires 16384 <= n /\ n < 2097152)
   (ensures (
@@ -1476,6 +1487,7 @@ let lemma_varint_enc_dec_3byte (n: nat) (r: byte_seq) : Lemma
 #pop-options
 
 #push-options "--z3rlimit 20"
+(** [lemma_varint_enc_dec_4byte]: a 4-byte varint (2097152 ≤ n < 268435456) roundtrips. *)
 let lemma_varint_enc_dec_4byte (n: nat) (r: byte_seq) : Lemma
   (requires 2097152 <= n /\ n < 268435456)
   (ensures (
@@ -1507,6 +1519,7 @@ let lemma_varint_enc_dec_4byte (n: nat) (r: byte_seq) : Lemma
 #pop-options
 
 #push-options "--z3rlimit 80"
+(** [lemma_varint_enc_dec_5byte]: a 5-byte varint (n ≥ 268435456) roundtrips. *)
 let lemma_varint_enc_dec_5byte (n: nat) (r: byte_seq) : Lemma
   (requires 268435456 <= n /\ n < 34359738368)
   (ensures (
@@ -1588,6 +1601,11 @@ let lemma_varint_encode_decode_roundtrip (v: int) (r: byte_seq) : Lemma
 #pop-options
 
 #push-options "--z3rlimit 50"
+(** [varint] — variable-length integer codec (LEB128-style, 1–5 bytes).
+
+    wfcv range is [0, 2^35).  The Pulse bridge ([Data.Codec.Pulse]) restricts
+    to U32 ([0, 2^32)`, i.e. at most 5 bytes); the headroom ([2^32, 2^35))
+    ensures every valid U32 fits comfortably in a 5-byte varint. *)
 let varint : codec int = {
   enc       = (fun v ->
     let n = v in
@@ -2187,9 +2205,12 @@ let label (#a:Type) (s: string) (c: codec a) : codec a = {
           right requires [|c2.enc v2| > 0 /\ not (p1 (Seq.index (c2.enc v2) 0))].
     Fails with the sub-decoder's error when the branch decode fails. *)
 
+(** [alt_enc] — encode an [either] by dispatching to [c1] ([Inl]) or [c2] ([Inr]). *)
 let alt_enc (#a #b:Type) (c1: codec a) (c2: codec b) (v: either a b) : Tot byte_seq =
   match v with | Inl v1 -> c1.enc v1 | Inr v2 -> c2.enc v2
 
+(** [alt_dec] — decode an [either]: if [p1] holds on the leading byte use [c1],
+    else [c2].  Empty input gives [UnexpectedEndOfInput]. *)
 let alt_dec (#a #b:Type) (c1: codec a) (c2: codec b) (p1: byte -> bool) (s: byte_seq)
   : Tot (decode_result (either a b)) =
   if Seq.length s < 1 then Inl (mk_decode_error UnexpectedEndOfInput 0)
@@ -2203,18 +2224,24 @@ let alt_dec (#a #b:Type) (c1: codec a) (c2: codec b) (p1: byte -> bool) (s: byte
       | Inr (v2, n2) -> Inr (Inr v2, n2)
       | Inl err -> Inl err
 
+(** [alt_wfcv] — well-formedness for [alt]: dispatches on the [either] arm, and
+    additionally asserts the disambiguating first-byte predicate separates arms. *)
 let alt_wfcv (#a #b:Type) (c1: codec a) (c2: codec b) (p1: byte -> bool) (v: either a b) : Tot bool =
   match v with
   | Inl v1 -> c1.wfcv v1 && Seq.length (c1.enc v1) > 0 && p1 (Seq.index (c1.enc v1) 0)
   | Inr v2 -> c2.wfcv v2 && Seq.length (c2.enc v2) > 0 && not (p1 (Seq.index (c2.enc v2) 0))
 
+(** [alt_wfcv_prop] — pure-prop form of [alt_wfcv]. *)
 let alt_wfcv_prop (#a #b:Type) (c1: codec a) (c2: codec b) (v: either a b) : Tot prop =
   match v with | Inl v1 -> c1.wfcv_prop v1 | Inr v2 -> c2.wfcv_prop v2
 
+(** [alt_rest_cond] — rest-condition for [alt]: dispatches on the arm. *)
 let alt_rest_cond (#a #b:Type) (c1: codec a) (c2: codec b) (v: either a b) (r: byte_seq) : Tot prop =
   match v with | Inl v1 -> c1.rest_cond v1 r | Inr v2 -> c2.rest_cond v2 r
 
 #push-options "--z3rlimit 80"
+(** [alt_roundtrip] — roundtrip proof for [alt]: by case on the disambiguating
+    predicate [p1].  Requires each arm's [wfcv]/[roundtrip]. *)
 let alt_roundtrip (#a #b:Type) (c1: codec a) (c2: codec b) (p1: byte -> bool)
   (v: either a b) (r: byte_seq) : Lemma
   (requires alt_wfcv c1 c2 p1 v /\ alt_wfcv_prop c1 c2 v /\ alt_rest_cond c1 c2 v r)
@@ -2235,6 +2262,7 @@ let alt_roundtrip (#a #b:Type) (c1: codec a) (c2: codec b) (p1: byte -> bool)
         c2.roundtrip v2 r; ()
 #pop-options
 
+(** [alt_dec_err_bound] — error-position bound for [alt_dec]. *)
 let alt_dec_err_bound (#a #b:Type) (c1: codec a) (c2: codec b) (p1: byte -> bool) (s: byte_seq) : Lemma
   (ensures (match alt_dec c1 c2 p1 s with Inl err -> err.err_pos <= Seq.length s | _ -> True))
   = if Seq.length s < 1 then ()
@@ -2243,6 +2271,7 @@ let alt_dec_err_bound (#a #b:Type) (c1: codec a) (c2: codec b) (p1: byte -> bool
       if p1 b0 then c1.dec_err_bound s else c2.dec_err_bound s
     end
 
+(** [alt_dec_consumed_bound] — consumed-bytes bound for [alt_dec]. *)
 let alt_dec_consumed_bound (#a #b:Type) (c1: codec a) (c2: codec b) (p1: byte -> bool) (s: byte_seq) : Lemma
   (ensures (match alt_dec c1 c2 p1 s with Inr (_, n) -> n <= Seq.length s | _ -> True))
   = if Seq.length s < 1 then ()
@@ -2252,6 +2281,9 @@ let alt_dec_consumed_bound (#a #b:Type) (c1: codec a) (c2: codec b) (p1: byte ->
     end
 
 #push-options "--z3rlimit 20"
+(** [alt] — predicate-disambiguated alternative: if [p1] matches the first byte
+    decode with [c1], else [c2] (see the group doc above this block for the full
+    contract, [alt_wfcv] disjointness, and examples). *)
 let alt (#a #b:Type) (c1: codec a) (c2: codec b) (p1: byte -> bool) : codec (either a b) = {
   enc = (fun v -> alt_enc c1 c2 v);
   dec = (fun s -> alt_dec c1 c2 p1 s);

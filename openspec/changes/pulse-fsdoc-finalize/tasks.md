@@ -21,20 +21,30 @@ Target order (alphabetical within each group):
 - [ ] **T1.1 — Types block.**  Keep `codec_t`, `error_code_c`, `decode_error_c`,
       `decode_result_ok`, `decode_result_c` contiguous, each with fsdoc (already
       mostly present — verify).
-- [ ] **T1.2 — Encoders, alphabetical.**  `encode_byteval`, `encode_token`,
-      `encode_uint8`, `encode_varint`, `encode_word16be`, `encode_word16le`,
-      `encode_word32be`, `encode_word32le`.  Move `varint_encode_pred` (the spec
-      helper) to sit **immediately above** `encode_varint`.
-- [ ] **T1.3 — Decoders, alphabetical.**  `decode_byteval`, `decode_token`,
-      `decode_uint8`, `decode_varint`, `decode_word16be`, `decode_word16le`,
-      `decode_word32be`, `decode_word32le`.  Move `varint_decode_expected` to sit
-      **immediately above** `decode_varint`.
+- [x] **T1.2 — Encoders, alphabetical (non-varint) + varint last.**
+      `encode_byteval`, `encode_token`, `encode_uint8`, `encode_word16be`,
+      `encode_word16le`, `encode_word32be`, `encode_word32le`, then
+      `varint_encode_pred` (immediately above) `encode_varint`.
+      **CRITICAL FINDING (landed):** `encode_varint`/`varint_encode_pred` MUST
+      stay **after** the word encoders.  Moving them earlier (alphabetical
+      middle) puts the 5-way varint case-split in scope *before*
+      `lemma_pulse_roundtrip_word32be`, tipping that already-fragile word32 SMT
+      query from "slow (~90s)" into a **non-terminating z3 spin (100% CPU)**.
+      Varint stays last: it is the odd-one-out (deferred-length 5-byte) and its
+      placement is the proven-green SMT order.
+- [x] **T1.3 — Decoders, alphabetical (non-varint) + varint last.**
+      `decode_byteval`, `decode_token`, `decode_uint8`, `decode_word16be`,
+      `decode_word16le`, `decode_word32be`, `decode_word32le`, then
+      `varint_decode_expected` (immediately above) `decode_varint`.  Same
+      SMT-scope constraint as encoders.
 - [ ] **T1.4 — Dispatchers.**  `encode_bytes` then `decode_bytes`, fsdoc'd.
-- [ ] **T1.5 — Lemmas, alphabetical.**  `lemma_pulse_roundtrip_{byteval,token,
-      uint8,varint,word16be,word16le,word32be,word32le}` then
-      `lemma_varint_roundtrip_smtpat` + `lemma_pulse_encode_decode_match`,
-      all fsdoc'd.
-- [ ] **T1.6 — Re-verify `Data.Codec.Pulse`** after the reorder (0-admit).
+- [x] **T1.5 — Lemmas.**  `lemma_pulse_roundtrip_{byteval,token,uint8,word16be,
+      word16le,word32be,word32le}` then `lemma_varint_roundtrip_smtpat` (must sit
+      **after** word32le — its SMTPat trigger otherwise pollutes the word-lemma
+      SMT queries) + `lemma_pulse_roundtrip_varint` (must sit **after** smtpat,
+      which it depends on) + `lemma_pulse_encode_decode_match`.
+- [x] **T1.6 — Re-verify `Data.Codec.Pulse`** after the reorder — GREEN, 0-admit
+      (`All verification conditions discharged successfully`, < 5 min @ rlimit 120).
 
 > Note: `varint_encode_pred` / `varint_decode_expected` / `lemma_varint_roundtrip_
 > smtpat` must stay `noextract` (they use `Seq`/`Prims.int`).  Do **not** reorder

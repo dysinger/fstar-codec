@@ -81,8 +81,41 @@ type decode_result_c =
   | DR_Inr of decode_result_ok
 
 (* ── Encode functions — each with full byte-level post-condition ─────── *)
+(** Encode an expected byte value into a buffer. Returns 1ul.
 
-(** Encode a single byte token into a buffer at offset. Returns 1ul. *)
+    @param x The single byte to write.
+    @param b The destination buffer (must hold at least 1 byte at [i]).
+    @param i The write offset.
+    @returns The number of bytes written (always [1ul]).
+    The byte written equals [(DC.byte_val x).enc ()]. *)
+fn encode_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t)
+    (#s0: erased (Seq.seq U8.t))
+    requires
+      A.pts_to b s0 **
+      pure (U32.v i + 1 <= A.length b)
+    returns w: U32.t
+    ensures
+      (exists* (s1: Seq.seq U8.t).
+        A.pts_to b s1 **
+        pure (U32.v i + 1 <= A.length b /\
+              Seq.length s1 == A.length b /\
+              Seq.slice s1 (U32.v i) (U32.v i + 1)
+                `Seq.equal` (DC.byte_val x).enc ())) **
+      pure (w == 1ul)
+{
+  let j = US.uint32_to_sizet i;
+  A.pts_to_len b;
+  b.(j) <- x;
+  1ul
+}
+
+(** Encode a single byte token into a buffer at offset. Returns 1ul.
+
+    @param v The value (must satisfy [U32.v v < 256], its low 8 bits are written).
+    @param b The destination buffer (must hold at least 1 byte at [i]).
+    @param i The write offset.
+    @returns The number of bytes written (always [1ul]).
+    The byte written equals [DC.token.enc (uint32_to_uint8 v)]. *)
 fn encode_token (v: U32.t) (b: A.array U8.t) (i: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -105,29 +138,13 @@ fn encode_token (v: U32.t) (b: A.array U8.t) (i: U32.t)
   1ul
 }
 
-(** Encode an expected byte value into a buffer. Returns 1ul. *)
-fn encode_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t)
-    (#s0: erased (Seq.seq U8.t))
-    requires
-      A.pts_to b s0 **
-      pure (U32.v i + 1 <= A.length b)
-    returns w: U32.t
-    ensures
-      (exists* (s1: Seq.seq U8.t).
-        A.pts_to b s1 **
-        pure (U32.v i + 1 <= A.length b /\
-              Seq.length s1 == A.length b /\
-              Seq.slice s1 (U32.v i) (U32.v i + 1)
-                `Seq.equal` (DC.byte_val x).enc ())) **
-      pure (w == 1ul)
-{
-  let j = US.uint32_to_sizet i;
-  A.pts_to_len b;
-  b.(j) <- x;
-  1ul
-}
+(** Encode an unsigned 8-bit integer as a single byte.
 
-(** Encode a uint8. *)
+    @param v The value to encode (must satisfy [U32.v v < 256]).
+    @param b The destination buffer (must hold at least 1 byte at [i]).
+    @param i The write offset.
+    @returns The number of bytes written (always [1ul]).
+    The byte written equals [DC.uint8.enc (U32.v v)]. *)
 fn encode_uint8 (v: U32.t) (b: A.array U8.t) (i: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -150,7 +167,13 @@ fn encode_uint8 (v: U32.t) (b: A.array U8.t) (i: U32.t)
   1ul
 }
 
-(** Encode a big-endian 16-bit integer. *)
+(** Encode a big-endian 16-bit integer as two bytes (high then low).
+
+    @param v The value to encode (must satisfy [U32.v v < 65536]).
+    @param b The destination buffer (must hold at least 2 bytes at [i]).
+    @param i The write offset.
+    @returns The number of bytes written (always [2ul]).
+    The two bytes equal [DC.word16be.enc (U32.v v)]. *)
 fn encode_word16be (v: U32.t) (b: A.array U8.t) (i: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -176,7 +199,45 @@ fn encode_word16be (v: U32.t) (b: A.array U8.t) (i: U32.t)
   2ul
 }
 
-(** Encode a big-endian 32-bit integer. *)
+(** Encode a little-endian 16-bit integer as two bytes (low then high).
+
+    @param v The value to encode (must satisfy [U32.v v < 65536]).
+    @param b The destination buffer (must hold at least 2 bytes at [i]).
+    @param i The write offset.
+    @returns The number of bytes written (always [2ul]).
+    The two bytes equal [DC.word16le.enc (U32.v v)]. *)
+fn encode_word16le (v: U32.t) (b: A.array U8.t) (i: U32.t)
+    (#s0: erased (Seq.seq U8.t))
+    requires
+      A.pts_to b s0 **
+      pure (U32.v i + 2 <= A.length b /\ U32.v v < 65536 /\ U32.v i + 1 < 4294967296)
+    returns w: U32.t
+    ensures
+      (exists* (s1: Seq.seq U8.t).
+        A.pts_to b s1 **
+        pure (U32.v i + 2 <= A.length b /\
+              Seq.length s1 == A.length b /\
+              Seq.slice s1 (U32.v i) (U32.v i + 2)
+                `Seq.equal` DC.word16le.enc (U32.v v))) **
+      pure (w == 2ul)
+{
+  let lo = uint32_to_uint8 (U32.rem v 256ul);
+  let hi = uint32_to_uint8 (U32.div v 256ul);
+  let j = US.uint32_to_sizet i;
+  let j1 = US.uint32_to_sizet (U32.add i 1ul);
+  A.pts_to_len b;
+  b.(j) <- lo;
+  b.(j1) <- hi;
+  2ul
+}
+
+(** Encode a big-endian 32-bit integer as four bytes (most significant first).
+
+    @param v The value to encode.
+    @param b The destination buffer (must hold at least 4 bytes at [i]).
+    @param i The write offset.
+    @returns The number of bytes written (always [4ul]).
+    The four bytes equal [DC.word32be.enc (U32.v v)]. *)
 fn encode_word32be (v: U32.t) (b: A.array U8.t) (i: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -208,33 +269,13 @@ fn encode_word32be (v: U32.t) (b: A.array U8.t) (i: U32.t)
   4ul
 }
 
-(** Encode a little-endian 16-bit integer. *)
-fn encode_word16le (v: U32.t) (b: A.array U8.t) (i: U32.t)
-    (#s0: erased (Seq.seq U8.t))
-    requires
-      A.pts_to b s0 **
-      pure (U32.v i + 2 <= A.length b /\ U32.v v < 65536 /\ U32.v i + 1 < 4294967296)
-    returns w: U32.t
-    ensures
-      (exists* (s1: Seq.seq U8.t).
-        A.pts_to b s1 **
-        pure (U32.v i + 2 <= A.length b /\
-              Seq.length s1 == A.length b /\
-              Seq.slice s1 (U32.v i) (U32.v i + 2)
-                `Seq.equal` DC.word16le.enc (U32.v v))) **
-      pure (w == 2ul)
-{
-  let lo = uint32_to_uint8 (U32.rem v 256ul);
-  let hi = uint32_to_uint8 (U32.div v 256ul);
-  let j = US.uint32_to_sizet i;
-  let j1 = US.uint32_to_sizet (U32.add i 1ul);
-  A.pts_to_len b;
-  b.(j) <- lo;
-  b.(j1) <- hi;
-  2ul
-}
+(** Encode a little-endian 32-bit integer as four bytes (least significant first).
 
-(** Encode a little-endian 32-bit integer. *)
+    @param v The value to encode.
+    @param b The destination buffer (must hold at least 4 bytes at [i]).
+    @param i The write offset.
+    @returns The number of bytes written (always [4ul]).
+    The four bytes equal [DC.word32le.enc (U32.v v)]. *)
 fn encode_word32le (v: U32.t) (b: A.array U8.t) (i: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -295,7 +336,14 @@ let varint_encode_pred (n: nat) (s: Seq.seq U8.t) (i: nat) : prop =
       U8.v (Seq.index s (i + 4)) == n / 268435456)
   else False
 
-(** Encode a variable-length integer.  Conservative 5-byte precondition. *)
+(** Encode a variable-length integer.  Conservative 5-byte precondition.
+
+    @param v The value to encode.
+    @param b The destination buffer (must hold at least 5 bytes at [i]).
+    @param i The write offset.
+    @returns The number of bytes written: [nbytes_of_varint (U32.v v)]
+             (1..5, matching the pure [DC.varint] layout).
+    The written bytes satisfy [varint_encode_pred (U32.v v)]. *)
 fn encode_varint (v: U32.t) (b: A.array U8.t) (i: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -375,36 +423,15 @@ fn encode_varint (v: U32.t) (b: A.array U8.t) (i: U32.t)
 }
 
 (* ── Decode functions — each with result-level post-condition ───────── *)
+(** Decode an expected byte value.
 
-(** Decode a single-byte token. *)
-fn decode_token (b: A.array U8.t) (i: U32.t) (n: U32.t)
-    (#s0: erased (Seq.seq U8.t))
-    requires
-      A.pts_to b s0 **
-      pure (U32.v i + U32.v n <= A.length b /\ U32.v i + U32.v n < 4294967296)
-    returns r: decode_result_c
-    ensures
-      A.pts_to b s0 **
-      pure (
-        A.length b == Seq.length s0 /\
-        U32.v i + U32.v n <= A.length b /\
-        (let input_slice = Seq.slice s0 (U32.v i) (U32.v i + U32.v n) in
-        match r, DC.token.dec input_slice with
-        | DR_Inr rr, Inr (dec_val, _) -> rr.n == 1ul /\ U32.v rr.value == U8.v dec_val
-        | DR_Inl _, Inl _ -> True
-        | _, _ -> False))
-{
-  A.pts_to_len b;
-  if U32.lt i (U32.add i n) {
-    let j = US.uint32_to_sizet i;
-    let x = b.(j);
-    DR_Inr ({ n = 1ul; value = uint8_to_uint32 x })
-  } else {
-    DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
-  }
-}
-
-(** Decode an expected byte value. *)
+    @param x The single byte to match.
+    @param b The source buffer.
+    @param i The read offset.
+    @param n The number of available bytes from [i].
+    @returns [DR_Inr] (n = 1, value = 0) on match; else [DR_Inl] with
+             [EC_ExpectedByte] (read byte differs) or [EC_UnexpectedEndOfInput].
+    Value matches [(DC.byte_val x).dec]. *)
 fn decode_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -436,7 +463,47 @@ fn decode_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
   }
 }
 
-(** Decode a uint8. *)
+(** Decode a single-byte token.
+
+    @param b The source buffer.
+    @param i The read offset.
+    @param n The number of available bytes from [i].
+    @returns [DR_Inr] (n = 1, value = byte) or [DR_Inl] [EC_UnexpectedEndOfInput].
+    Value matches [DC.token.dec]. *)
+fn decode_token (b: A.array U8.t) (i: U32.t) (n: U32.t)
+    (#s0: erased (Seq.seq U8.t))
+    requires
+      A.pts_to b s0 **
+      pure (U32.v i + U32.v n <= A.length b /\ U32.v i + U32.v n < 4294967296)
+    returns r: decode_result_c
+    ensures
+      A.pts_to b s0 **
+      pure (
+        A.length b == Seq.length s0 /\
+        U32.v i + U32.v n <= A.length b /\
+        (let input_slice = Seq.slice s0 (U32.v i) (U32.v i + U32.v n) in
+        match r, DC.token.dec input_slice with
+        | DR_Inr rr, Inr (dec_val, _) -> rr.n == 1ul /\ U32.v rr.value == U8.v dec_val
+        | DR_Inl _, Inl _ -> True
+        | _, _ -> False))
+{
+  A.pts_to_len b;
+  if U32.lt i (U32.add i n) {
+    let j = US.uint32_to_sizet i;
+    let x = b.(j);
+    DR_Inr ({ n = 1ul; value = uint8_to_uint32 x })
+  } else {
+    DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
+  }
+}
+
+(** Decode an unsigned 8-bit integer from a single byte.
+
+    @param b The source buffer.
+    @param i The read offset.
+    @param n The number of available bytes from [i].
+    @returns [DR_Inr] (n = 1, value = byte) or [DR_Inl] on insufficent input.
+    Value matches [DC.uint8.dec]. *)
 fn decode_uint8 (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -464,7 +531,13 @@ fn decode_uint8 (b: A.array U8.t) (i: U32.t) (n: U32.t)
   }
 }
 
-(** Decode a big-endian 16-bit integer. *)
+(** Decode a big-endian 16-bit integer from two bytes.
+
+    @param b The source buffer.
+    @param i The read offset.
+    @param n The number of available bytes from [i].
+    @returns [DR_Inr] (n = 2, value = reconstructed uint16) or [DR_Inl].
+    Value matches [DC.word16be.dec]. *)
 fn decode_word16be (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -496,7 +569,51 @@ fn decode_word16be (b: A.array U8.t) (i: U32.t) (n: U32.t)
   }
 }
 
-(** Decode a big-endian 32-bit integer. *)
+(** Decode a little-endian 16-bit integer from two bytes.
+
+    @param b The source buffer.
+    @param i The read offset.
+    @param n The number of available bytes from [i].
+    @returns [DR_Inr] (n = 2, value = reconstructed uint16) or [DR_Inl].
+    Value matches [DC.word16le.dec]. *)
+fn decode_word16le (b: A.array U8.t) (i: U32.t) (n: U32.t)
+    (#s0: erased (Seq.seq U8.t))
+    requires
+      A.pts_to b s0 **
+      pure (U32.v i + U32.v n <= A.length b /\ U32.v i + 2 <= A.length b /\
+            U32.v i + U32.v n < 4294967296 /\ U32.v i + 2 < 4294967296)
+    returns r: decode_result_c
+    ensures
+      A.pts_to b s0 **
+      pure (
+        A.length b == Seq.length s0 /\
+        U32.v i + U32.v n <= A.length b /\
+        (let input_slice = Seq.slice s0 (U32.v i) (U32.v i + U32.v n) in
+        match r, DC.word16le.dec input_slice with
+        | DR_Inr rr, Inr (dec_val, _) -> rr.n == 2ul /\ U32.v rr.value == dec_val
+        | DR_Inl _, Inl _ -> True
+        | _, _ -> False))
+{
+  A.pts_to_len b;
+  if U32.lte (U32.add i 2ul) (U32.add i n) {
+    let j0 = US.uint32_to_sizet i;
+    let j1 = US.uint32_to_sizet (U32.add i 1ul);
+    let lo = b.(j0);
+    let hi = b.(j1);
+    let value = U32.add (uint8_to_uint32 lo) (U32.mul (uint8_to_uint32 hi) 256ul);
+    DR_Inr ({ n = 2ul; value = value })
+  } else {
+    DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
+  }
+}
+
+(** Decode a big-endian 32-bit integer from four bytes.
+
+    @param b The source buffer.
+    @param i The read offset.
+    @param n The number of available bytes from [i].
+    @returns [DR_Inr] (n = 4, value = reconstructed uint32) or [DR_Inl].
+    Value matches [DC.word32be.dec]. *)
 fn decode_word32be (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -536,39 +653,13 @@ fn decode_word32be (b: A.array U8.t) (i: U32.t) (n: U32.t)
   }
 }
 
-(** Decode a little-endian 16-bit integer. *)
-fn decode_word16le (b: A.array U8.t) (i: U32.t) (n: U32.t)
-    (#s0: erased (Seq.seq U8.t))
-    requires
-      A.pts_to b s0 **
-      pure (U32.v i + U32.v n <= A.length b /\ U32.v i + 2 <= A.length b /\
-            U32.v i + U32.v n < 4294967296 /\ U32.v i + 2 < 4294967296)
-    returns r: decode_result_c
-    ensures
-      A.pts_to b s0 **
-      pure (
-        A.length b == Seq.length s0 /\
-        U32.v i + U32.v n <= A.length b /\
-        (let input_slice = Seq.slice s0 (U32.v i) (U32.v i + U32.v n) in
-        match r, DC.word16le.dec input_slice with
-        | DR_Inr rr, Inr (dec_val, _) -> rr.n == 2ul /\ U32.v rr.value == dec_val
-        | DR_Inl _, Inl _ -> True
-        | _, _ -> False))
-{
-  A.pts_to_len b;
-  if U32.lte (U32.add i 2ul) (U32.add i n) {
-    let j0 = US.uint32_to_sizet i;
-    let j1 = US.uint32_to_sizet (U32.add i 1ul);
-    let lo = b.(j0);
-    let hi = b.(j1);
-    let value = U32.add (uint8_to_uint32 lo) (U32.mul (uint8_to_uint32 hi) 256ul);
-    DR_Inr ({ n = 2ul; value = value })
-  } else {
-    DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
-  }
-}
+(** Decode a little-endian 32-bit integer from four bytes.
 
-(** Decode a little-endian 32-bit integer. *)
+    @param b The source buffer.
+    @param i The read offset.
+    @param n The number of available bytes from [i].
+    @returns [DR_Inr] (n = 4, value = reconstructed uint32) or [DR_Inl].
+    Value matches [DC.word32le.dec]. *)
 fn decode_word32le (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -652,7 +743,13 @@ let varint_decode_expected (i: U32.t) (n: U32.t) (s: Seq.seq U8.t { U32.v i + U3
               let v4 = U32.add v3 (U32.mul (U32.uint_to_t b4_val) 268435456ul) in
               DR_Inr ({ n = 5ul; value = v4 })
 
-(** Decode a variable-length integer. *)
+(** Decode a variable-length integer.
+
+    @param b The source buffer.
+    @param i The read offset.
+    @param n The number of available bytes from [i].
+    @returns The decode result; exactly [varint_decode_expected i n s0]
+             (the pure spec defined immediately above). *)
 fn decode_varint (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -721,7 +818,15 @@ fn decode_varint (b: A.array U8.t) (i: U32.t) (n: U32.t)
 
 (* ── Dispatch functions — each with full per-constructor post-condition ─ *)
 
-(** encode_bytes: dispatch on codec_t with full per-constructor byte spec. *)
+(** [encode_bytes]: dispatch on [codec_t] with a full per-constructor byte spec.
+
+    @param c The codec tag selecting the encoder.
+    @param v The value to encode.
+    @param b The destination buffer.
+    @param i The write offset.
+    @returns The number of bytes written, matching the leaf encoder for [c].
+    Precondition and byte post-condition are exact per constructor — see the
+    [match c with ...] body. *)
 fn encode_bytes (c: codec_t) (v: U32.t) (b: A.array U8.t) (i: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -793,7 +898,13 @@ fn encode_bytes (c: codec_t) (v: U32.t) (b: A.array U8.t) (i: U32.t)
   }
 }
 
-(** decode_bytes: dispatch on codec_t with full per-constructor result spec. *)
+(** [decode_bytes]: dispatch on [codec_t] with a full per-constructor result spec.
+
+    @param c The codec tag selecting the decoder.
+    @param b The source buffer.
+    @param i The read offset.
+    @param n The number of available bytes from [i].
+    @returns The decode result matching the leaf decoder for [c]. *)
 fn decode_bytes (c: codec_t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -863,8 +974,40 @@ fn decode_bytes (c: codec_t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
 }
 
 (* ── Value-preserving roundtrip lemmas ─────────────────────────────── ─ *)
+(** [lemma_pulse_roundtrip_byteval]: encode then decode an expected byte.
 
-(** lemma_pulse_roundtrip_token: encode then decode preserves the value. *)
+    @param x The expected byte.
+    @param b The buffer.
+    @param i The offset.
+    @param n The available decode length.
+    Proves [decode_byteval x b i (encode_byteval x b i) == DR_Inr {n; value = 0ul}]. *)
+fn lemma_pulse_roundtrip_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
+    (#s0: erased (Seq.seq U8.t))
+    requires
+      A.pts_to b s0 **
+      pure (
+        U32.v i + 1 <= A.length b /\
+        U32.v i + 1 <= U32.v i + U32.v n /\
+        U32.v i + U32.v n <= A.length b /\
+        U32.v i + U32.v n < 4294967296)
+    returns res: (U32.t & decode_result_c)
+    ensures
+      (exists* (s1: Seq.seq U8.t).
+        A.pts_to b s1) **
+      pure (snd res == DR_Inr ({ n = fst res; value = 0ul }))
+{
+  let m = encode_byteval x b i;
+  let r = decode_byteval x b i m;
+  (m, r)
+}
+
+(** [lemma_pulse_roundtrip_token]: encode then decode preserves the value.
+
+    @param v The value (must satisfy [U32.v v < 256]).
+    @param b The buffer.
+    @param i The offset.
+    @param n The available decode length.
+    Proves [decode_token b i (encode_token v b i) == DR_Inr {n; value = v}]. *)
 fn lemma_pulse_roundtrip_token (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -886,28 +1029,13 @@ fn lemma_pulse_roundtrip_token (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t
   (m, r)
 }
 
-(** lemma_pulse_roundtrip_byteval: encode then decode an expected byte. *)
-fn lemma_pulse_roundtrip_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
-    (#s0: erased (Seq.seq U8.t))
-    requires
-      A.pts_to b s0 **
-      pure (
-        U32.v i + 1 <= A.length b /\
-        U32.v i + 1 <= U32.v i + U32.v n /\
-        U32.v i + U32.v n <= A.length b /\
-        U32.v i + U32.v n < 4294967296)
-    returns res: (U32.t & decode_result_c)
-    ensures
-      (exists* (s1: Seq.seq U8.t).
-        A.pts_to b s1) **
-      pure (snd res == DR_Inr ({ n = fst res; value = 0ul }))
-{
-  let m = encode_byteval x b i;
-  let r = decode_byteval x b i m;
-  (m, r)
-}
+(** [lemma_pulse_roundtrip_uint8]: encode then decode a uint8 preserves the value.
 
-(** lemma_pulse_roundtrip_uint8. *)
+    @param v The value (must satisfy [U32.v v < 256]).
+    @param b The buffer.
+    @param i The offset.
+    @param n The available decode length.
+    Proves [decode_uint8 b i (encode_uint8 v b i) == DR_Inr {n; value = v}]. *)
 fn lemma_pulse_roundtrip_uint8 (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -929,7 +1057,10 @@ fn lemma_pulse_roundtrip_uint8 (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t
   (m, r)
 }
 
-(** lemma_pulse_roundtrip_word16be. *)
+(** [lemma_pulse_roundtrip_word16be]: encode then decode a big-endian uint16 roundtrips.
+
+    @param v The value (must satisfy [U32.v v < 65536]).
+    Proves [decode_word16be b i (encode_word16be v b i) == DR_Inr {n; value = v}]. *)
 fn lemma_pulse_roundtrip_word16be (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -951,7 +1082,10 @@ fn lemma_pulse_roundtrip_word16be (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U3
   (m, r)
 }
 
-(** lemma_pulse_roundtrip_word16le. *)
+(** [lemma_pulse_roundtrip_word16le]: encode then decode a little-endian uint16 roundtrips.
+
+    @param v The value (must satisfy [U32.v v < 65536]).
+    Proves [decode_word16le b i (encode_word16le v b i) == DR_Inr {n; value = v}]. *)
 fn lemma_pulse_roundtrip_word16le (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -973,7 +1107,10 @@ fn lemma_pulse_roundtrip_word16le (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U3
   (m, r)
 }
 
-(** lemma_pulse_roundtrip_word32be. *)
+(** [lemma_pulse_roundtrip_word32be]: encode then decode a big-endian uint32 roundtrips.
+
+    @param v The value.
+    Proves [decode_word32be b i (encode_word32be v b i) == DR_Inr {n; value = v}]. *)
 fn lemma_pulse_roundtrip_word32be (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -994,7 +1131,10 @@ fn lemma_pulse_roundtrip_word32be (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U3
   (m, r)
 }
 
-(** lemma_pulse_roundtrip_word32le. *)
+(** [lemma_pulse_roundtrip_word32le]: encode then decode a little-endian uint32 roundtrips.
+
+    @param v The value.
+    Proves [decode_word32le b i (encode_word32le v b i) == DR_Inr {n; value = v}]. *)
 fn lemma_pulse_roundtrip_word32le (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -1037,7 +1177,12 @@ let lemma_varint_roundtrip_smtpat (v: U32.t) (s: Seq.seq U8.t) (i: U32.t)
   else if n < 268435456 then DC.lemma_varint_4byte_arithmetic n
   else DC.lemma_varint_5byte_arithmetic n
 
-(** lemma_pulse_roundtrip_varint. *)
+(** [lemma_pulse_roundtrip_varint]: encode then decode a varint roundtrips.
+
+    @param v The value.
+    Proves [decode_varint b i (encode_varint v b i) == DR_Inr {n; value = v}].
+    Relies on [lemma_varint_roundtrip_smtpat] (defined immediately above) to
+    discharge the 5-way threshold decomposition. *)
 fn lemma_pulse_roundtrip_varint (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -1059,7 +1204,15 @@ fn lemma_pulse_roundtrip_varint (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.
   (m, r)
 }
 
-(** lemma_pulse_encode_decode_match: dispatch-level master roundtrip lemma. *)
+(** [lemma_pulse_encode_decode_match]: dispatch-level master roundtrip lemma.
+
+    @param c The codec tag.
+    @param v The value.
+    @param b The buffer.
+    @param i The offset.
+    @param n The available decode length.
+    Proves [decode_bytes]∘[encode_bytes] roundtrips for every constructor:
+    value preserved (or [0] for [CT_ByteVal]). *)
 fn lemma_pulse_encode_decode_match (c: codec_t) (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
     (#s0: erased (Seq.seq U8.t))
     requires
@@ -1105,3 +1258,4 @@ fn lemma_pulse_encode_decode_match (c: codec_t) (v: U32.t) (b: A.array U8.t) (i:
     CT_Varint -> { lemma_pulse_roundtrip_varint v b i n }
   }
 }
+
