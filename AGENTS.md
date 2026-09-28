@@ -268,19 +268,23 @@ see tasks.md).  W1/W2 (varint `[0,2^32)` vs `[0,2^35)` range asymmetry and the
 hand-maintained `varint_decode_expected`/`decode_varint` spec/impl pair) are
 **documented**, not "fixed" — a written deferral, not a bug.
 
-> **Next steps (canonical):** a second adversarial review of the uncommitted
-> above found residual self-contradictions and false "done" claims — see
+> **Next steps (canonical) — the port is DONE; this is all that remains.**
+> The F\* `v2026.09.20` port is functionally complete and verified 0-admit;
+> there is **no remaining in-repo openspec work** (all 8 changes are LANDED).
+> A second adversarial review (this session) found residual prose drift + false
+> "done" claims; those are now **all resolved** in
 > [`openspec/changes/review-followup-2/tasks.md`](openspec/changes/review-followup-2/tasks.md)
-> (and its [`proposal.md`](openspec/changes/review-followup-2/proposal.md)).
-> Summary: AGENTS.md claims the varint fsdoc was *both* "collapsed" and "left
-> fragmentary" (C1); `_pulseL*` anchors are declared "dropped" but still exist
-> (C2); the Integration anchor-numbering comment is stale (C3); plus
-> `*<`→`<*` typo (W1), rlimit 80-vs-120 prose drift in AGENTS/API/Types-header
-> (W2–W4), `CHANGELOG` "19+" count (W5), 167-vs-168 M4 disagreement (W6),
-> S5 detritus never actually removed (W7), and the dotnet-sdk_10 "DISPROVEN"
-> verdict self-contradictory (W8).  Two claims should be re-softened from
-> "deterministic mechanism" to "observed correlation" (varint line-number
-> SMT-sensitivity, S1) or "unverified" (dotnet resolution, W8).
+> (STATUS: LANDED, 15/15 boxes done): varint-fsdoc contradiction (C1),
+> stale `_pulseL*` anchor claim + numbering comment (C2/C3), `*<`→`<*` typo,
+> rlimit 80-vs-120 drift, `CHANGELOG` "19+", M4 167-vs-168, S5 detritus actually
+> removed, dotnet-sdk_10 "DISPROVEN" reconciled, varint SMT-sensitivity claim
+> softened to "observed correlation, mechanism unproven" (S1).
+>
+> **The only genuinely-open items are upstream `../fstar` fork chores, not this
+> repo** (see `fstar-roll-forward/tasks.md` T0.5/T1.1/T1.2/T1.3/T4.2): push the
+> `v2026.09.20+lsp` branch, smoke-test LSP, and the operator-lookup deferral —
+> all need GitHub credentials on the `dysinger/fstar` fork and are out of scope
+> for `fstar-codec`.
 
 ## Build commands
 
