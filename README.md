@@ -1,4 +1,4 @@
-# fstar-codec
+# codec
 
 A formally verified, bidirectional serialization framework in
 [F\*](https://www.fstar-lang.org/).  **Twenty combinators, zero admits,

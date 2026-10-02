@@ -1,7 +1,7 @@
 # Copyright 2026 Department of Code LLC.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-# fstar-codec — Data.Codec verified bidirectional codec library.
+# codec — Data.Codec verified bidirectional codec library.
 #
 # Takes the F* toolchain as concrete derivations (no `pkgs` blob, no overlay
 # assumption, no module-name/order arguments).  Module names and their
@@ -31,7 +31,7 @@
 let
   inherit (stdenv) mkDerivation;
 
-  # Package name.  The repo/flake are "fstar-codec", but the internal
+  # Package name.  The package is "codec" (git repo "fstar-codec"), but the internal
   # derivation/artifact names drop the "fstar-" prefix (→ codec-checked,
   # codec-ocaml, codec-native, codec-fsharp, libcodec.*, codec.h).
   pname = "codec";

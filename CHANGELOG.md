@@ -42,8 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two test modules:
   - `Data.Codec.Test.Roundtrip`
   - `Data.Codec.Test.Integration`
-- Nix flake targets: `.#fstar-codec-checked` (verify) and
-  `.#fstar-codec-krml` (KaRaMeL extraction of the `.Low` module).
+- Nix flake targets: `.#codec-checked` (verify) and
+  `.#codec-krml` (KaRaMeL extraction of the `.Low` module).
 - Dual licensing: AGPL-3.0-or-later, or a commercial license from the author.
 
 ### Notes

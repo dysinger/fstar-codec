@@ -1,6 +1,6 @@
 <div align="center">
   <h1>License</h1>
-  <p><strong>fstar-codec</strong> — a formally verified, bidirectional
+  <p><strong>codec</strong> — a formally verified, bidirectional
   serialization framework written in F\*.</p>
 </div>
 

@@ -1,4 +1,4 @@
-# fstar-codec — Agent Guide & Handoff
+# codec — Agent Guide & Handoff
 
 `Data.Codec` — verified bidirectional codec library, extracted from the xeno
 monorepo (`codec/`) as a standalone repo.  F* source is 0-admit.  This file
@@ -80,10 +80,10 @@ default; the earlier `80` below was the pre-M5 setting):
 
 - `Data.Codec.Types` + `Data.Codec` + `Data.Codec.Pulse` + the three test
   modules (`Data.Codec.Test.Roundtrip` + `Integration` + `Pulse`).
-- `nix build .#fstar-codec-checked` — 0 admits (spec + Pulse leaf + tests).
-- `nix build .#fstar-codec-ocaml` — pure spec to OCaml findlib (`fstar_codec`).
-- `nix build .#fstar-codec-native` — the Pulse leaf extracted to C11 via
-  Custard, `libfstar-codec.{dylib,so,a}` + `fstar_codec.h`, no karamel
+- `nix build .#codec-checked` — 0 admits (spec + Pulse leaf + tests).
+- `nix build .#codec-ocaml` — pure spec to OCaml findlib (`fstar_codec`).
+- `nix build .#codec-native` — the Pulse leaf extracted to C11 via
+  Custard, `libcodec.{dylib,so,a}` + `fstar_codec.h`, no karamel
   (produced `dylib`/`a` once; now blocked by the hang).
 
 ### `Data.Codec.Pulse` is PORTED to Pulse (this session)
@@ -284,7 +284,7 @@ hand-maintained `varint_decode_expected`/`decode_varint` spec/impl pair) are
 > repo** (see `fstar-roll-forward/tasks.md` T0.5/T1.1/T1.2/T1.3/T4.2): push the
 > `v2026.09.20+lsp` branch, smoke-test LSP, and the operator-lookup deferral —
 > all need GitHub credentials on the `dysinger/fstar` fork and are out of scope
-> for `fstar-codec`.
+> for `codec`.
 
 ## Build commands
 
