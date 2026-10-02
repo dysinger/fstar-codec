@@ -108,11 +108,11 @@ let
             #    `--codegen OCaml` (one file per invocation, in dependency order).
             for m in ${builtins.concatStringsSep " " pure-modules}; do
               ${fstar-exe} \
-                --no_default_includes --include $ULIB --include ./src \
+                --no_default_includes --warn_error -274 --include $ULIB --include ./src \
                 --cache_checked_modules --cache_dir cache --odir cache \
                 src/$m.fst || exit 1
               ${fstar-exe} \
-                --no_default_includes --include $ULIB --include ./src --include cache \
+                --no_default_includes --warn_error -274 --include $ULIB --include ./src --include cache \
                 --cache_checked_modules --cache_dir cache \
                 --codegen OCaml --odir $out \
                 src/$m.fst || exit 1
@@ -124,14 +124,14 @@ let
             done
             for m in Data.Codec.Pulse; do
               ${fstar-exe} \
-                --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src \
+                --no_default_includes --warn_error -274 --include "$ULIB" $PULSE_INCS --include ./src \
                 --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
                 --z3rlimit 120 \
                 --cache_checked_modules --cache_dir cache --odir cache \
                 src/$m.fst || exit 1
             done
             ${fstar-exe} \
-              --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src --include cache \
+              --no_default_includes --warn_error -274 --include "$ULIB" $PULSE_INCS --include ./src --include cache \
               --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
               --cache_checked_modules --cache_dir cache \
               --codegen Custard --custard_backend OCaml --custard_monomorphize_types true \
@@ -212,7 +212,7 @@ let
       # (Error 317) can find our own modules' `.checked` files.
       for m in Data.Codec.Types Data.Codec Data.Codec.Pulse; do
         ${fstar-exe} \
-          --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src \
+          --no_default_includes --warn_error -274 --include "$ULIB" $PULSE_INCS --include ./src \
           --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
           --z3rlimit 120 \
           --cache_checked_modules --cache_dir cache --odir cache \
@@ -220,7 +220,7 @@ let
       done
       # Extract the whole `Data.Codec.Pulse` module to C (library mode).
       ${fstar-exe} \
-        --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src --include cache \
+        --no_default_includes --warn_error -274 --include "$ULIB" $PULSE_INCS --include ./src --include cache \
         --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
         --cache_checked_modules --cache_dir cache \
         --codegen Custard --custard_backend C --custard_monomorphize_types true \
@@ -273,14 +273,14 @@ let
       cp ${fstar-checked}/*.checked cache/ 2>/dev/null || true
       for m in Data.Codec.Types Data.Codec Data.Codec.Pulse; do
         ${fstar-exe} \
-          --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src \
+          --no_default_includes --warn_error -274 --include "$ULIB" $PULSE_INCS --include ./src \
           --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
           --z3rlimit 120 \
           --cache_checked_modules --cache_dir cache --odir cache \
           src/$m.fst || exit 1
       done
       ${fstar-exe} \
-        --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src --include cache \
+        --no_default_includes --warn_error -274 --include "$ULIB" $PULSE_INCS --include ./src --include cache \
         --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
         --cache_checked_modules --cache_dir cache \
         --codegen Custard --custard_backend FSharp --custard_monomorphize_types true \
