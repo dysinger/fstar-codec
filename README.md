@@ -61,7 +61,7 @@ compile to C for use at the byte-buffer level.
   `assume`, no `admit_smt_queries` (the anchor test module uses a scoped,
   semantically-neutral `--admit_smt_queries true` — see `AGENTS.md`).
 - **C extraction.**  The Pulse leaf codecs extract to C with byte-level
-  post-conditions (no KaRaMeL).
+  post-conditions.
 - **A real test suite.**  121 roundtrip and error-path tests (111 pure + 10
   Pulse buffer tests), all verified.
 
