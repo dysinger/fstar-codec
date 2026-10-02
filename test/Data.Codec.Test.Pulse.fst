@@ -6,9 +6,10 @@ Data.Codec.Test.Pulse — buffer-based roundtrip + error-path tests for the Puls
 
 Ten Pulse `fn` tests that call the [Data.Codec.Pulse] roundtrip lemmas and the
 encode/decode dispatch through an [Pulse.Lib.Array.array], exercising the
-byte-buffer code path.  Each test brackets a single `A.alloc`/`A.free` pair
-(the Pulse analogue of the old Low* `alloca` + `push_frame`/`pop_frame`) and
-forces the expected result constructor by pattern match.
+byte-buffer code path.  Each test scopes its scratch buffer with the `let mut
+… = [| … |]` array-literal form (the non-deprecated replacement for the
+retired `A.alloc`/`A.free`) and forces the expected result constructor by
+pattern match.
 
 Kept in a dedicated `#lang-pulse` module because Pulse reserves the `label`
 keyword, which the pure test modules ([Data.Codec.Test.Roundtrip],
@@ -35,10 +36,10 @@ fn test_stack_token_roundtrip ()
     returns u: unit
     ensures emp
 {
-  let buf = A.alloc 0uy 2sz;
+  let mut buf = [| 0uy; 2sz |];
   let (_, result) = lemma_pulse_roundtrip_token 0x42ul buf 0ul 2ul;
   let Data.Codec.Pulse.DR_Inr _ = result;
-  A.free buf
+  ()
 }
 
 (** Pulse roundtrip: uint8 encode→decode through an A.array buffer. *)
@@ -47,10 +48,10 @@ fn test_stack_uint8_roundtrip ()
     returns u: unit
     ensures emp
 {
-  let buf = A.alloc 0uy 2sz;
+  let mut buf = [| 0uy; 2sz |];
   let (_, result) = lemma_pulse_roundtrip_uint8 42ul buf 0ul 2ul;
   let Data.Codec.Pulse.DR_Inr _ = result;
-  A.free buf
+  ()
 }
 
 (** Pulse roundtrip: byte_val encode→decode through an A.array buffer. *)
@@ -59,10 +60,10 @@ fn test_stack_byteval_roundtrip ()
     returns u: unit
     ensures emp
 {
-  let buf = A.alloc 0uy 2sz;
+  let mut buf = [| 0uy; 2sz |];
   let (_, result) = lemma_pulse_roundtrip_byteval 0x5Buy buf 0ul 2ul;
   let Data.Codec.Pulse.DR_Inr _ = result;
-  A.free buf
+  ()
 }
 
 (** Pulse roundtrip: word16be encode→decode through an A.array buffer. *)
@@ -71,10 +72,10 @@ fn test_stack_word16be_roundtrip ()
     returns u: unit
     ensures emp
 {
-  let buf = A.alloc 0uy 3sz;
+  let mut buf = [| 0uy; 3sz |];
   let (_, result) = lemma_pulse_roundtrip_word16be 0xABCDul buf 0ul 3ul;
   let Data.Codec.Pulse.DR_Inr _ = result;
-  A.free buf
+  ()
 }
 
 (** Pulse roundtrip: word32be encode→decode through an A.array buffer. *)
@@ -83,10 +84,10 @@ fn test_stack_word32be_roundtrip ()
     returns u: unit
     ensures emp
 {
-  let buf = A.alloc 0uy 5sz;
+  let mut buf = [| 0uy; 5sz |];
   let (_, result) = lemma_pulse_roundtrip_word32be 0xDEADBEEFul buf 0ul 5ul;
   let Data.Codec.Pulse.DR_Inr _ = result;
-  A.free buf
+  ()
 }
 
 (** Pulse roundtrip: word16le encode→decode through an A.array buffer. *)
@@ -95,10 +96,10 @@ fn test_stack_word16le_roundtrip ()
     returns u: unit
     ensures emp
 {
-  let buf = A.alloc 0uy 3sz;
+  let mut buf = [| 0uy; 3sz |];
   let (_, result) = lemma_pulse_roundtrip_word16le 0xCDABul buf 0ul 3ul;
   let Data.Codec.Pulse.DR_Inr _ = result;
-  A.free buf
+  ()
 }
 
 (** Pulse roundtrip: word32le encode→decode through an A.array buffer. *)
@@ -107,10 +108,10 @@ fn test_stack_word32le_roundtrip ()
     returns u: unit
     ensures emp
 {
-  let buf = A.alloc 0uy 5sz;
+  let mut buf = [| 0uy; 5sz |];
   let (_, result) = lemma_pulse_roundtrip_word32le 0xEFBEADDEul buf 0ul 5ul;
   let Data.Codec.Pulse.DR_Inr _ = result;
-  A.free buf
+  ()
 }
 
 (** Pulse roundtrip: varint encode→decode through an A.array buffer.
@@ -120,7 +121,7 @@ fn test_stack_varint_roundtrip ()
     returns u: unit
     ensures emp
 {
-  let buf = A.alloc 0uy 6sz;
+  let mut buf = [| 0uy; 6sz |];
   let (_, result_0) = lemma_pulse_roundtrip_varint 0ul buf 0ul 6ul;
   let Data.Codec.Pulse.DR_Inr _ = result_0;
   let (_, result_128) = lemma_pulse_roundtrip_varint 128ul buf 0ul 6ul;
@@ -131,7 +132,7 @@ fn test_stack_varint_roundtrip ()
   let Data.Codec.Pulse.DR_Inr _ = result_2097152;
   let (_, result_268435456) = lemma_pulse_roundtrip_varint 268435456ul buf 0ul 6ul;
   let Data.Codec.Pulse.DR_Inr _ = result_268435456;
-  A.free buf
+  ()
 }
 
 (** Pulse error test: decode_varint overflow detection.
@@ -142,7 +143,7 @@ fn test_stack_varint_overflow ()
     returns u: unit
     ensures emp
 {
-  let buf = A.alloc 0uy 5sz;
+  let mut buf = [| 0uy; 5sz |];
   let j0 = US.uint32_to_sizet 0ul;
   buf.(j0) <- 0xFFuy;
   let j1 = US.uint32_to_sizet 1ul;
@@ -155,7 +156,7 @@ fn test_stack_varint_overflow ()
   buf.(j4) <- 0x10uy;
   let result = decode_varint buf 0ul 5ul;
   let Data.Codec.Pulse.DR_Inl _ = result;
-  A.free buf
+  ()
 }
 
 (** Pulse roundtrip through the dispatch table:
@@ -165,10 +166,10 @@ fn test_stack_varint_dispatch_roundtrip ()
     returns u: unit
     ensures emp
 {
-  let buf = A.alloc 0uy 6sz;
+  let mut buf = [| 0uy; 6sz |];
   let v = 300ul;
   let written = encode_bytes CT_Varint v buf 0ul;
   let result = decode_bytes CT_Varint buf 0ul written;
   let Data.Codec.Pulse.DR_Inr r = result;
-  A.free buf
+  ()
 }
