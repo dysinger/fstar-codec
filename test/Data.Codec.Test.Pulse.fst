@@ -30,6 +30,7 @@ open FStar.UInt32
 module A = Pulse.Lib.Array
 module US = FStar.SizeT
 
+
 (** Pulse roundtrip: token encode→decode through an A.array buffer. *)
 fn test_stack_token_roundtrip ()
     requires emp
@@ -41,6 +42,7 @@ fn test_stack_token_roundtrip ()
   let Data.Codec.Pulse.DR_Inr _ = result;
   ()
 }
+
 
 (** Pulse roundtrip: uint8 encode→decode through an A.array buffer. *)
 fn test_stack_uint8_roundtrip ()
@@ -54,6 +56,7 @@ fn test_stack_uint8_roundtrip ()
   ()
 }
 
+
 (** Pulse roundtrip: byte_val encode→decode through an A.array buffer. *)
 fn test_stack_byteval_roundtrip ()
     requires emp
@@ -65,6 +68,7 @@ fn test_stack_byteval_roundtrip ()
   let Data.Codec.Pulse.DR_Inr _ = result;
   ()
 }
+
 
 (** Pulse roundtrip: word16be encode→decode through an A.array buffer. *)
 fn test_stack_word16be_roundtrip ()
@@ -78,6 +82,7 @@ fn test_stack_word16be_roundtrip ()
   ()
 }
 
+
 (** Pulse roundtrip: word32be encode→decode through an A.array buffer. *)
 fn test_stack_word32be_roundtrip ()
     requires emp
@@ -89,6 +94,7 @@ fn test_stack_word32be_roundtrip ()
   let Data.Codec.Pulse.DR_Inr _ = result;
   ()
 }
+
 
 (** Pulse roundtrip: word16le encode→decode through an A.array buffer. *)
 fn test_stack_word16le_roundtrip ()
@@ -102,6 +108,7 @@ fn test_stack_word16le_roundtrip ()
   ()
 }
 
+
 (** Pulse roundtrip: word32le encode→decode through an A.array buffer. *)
 fn test_stack_word32le_roundtrip ()
     requires emp
@@ -113,6 +120,7 @@ fn test_stack_word32le_roundtrip ()
   let Data.Codec.Pulse.DR_Inr _ = result;
   ()
 }
+
 
 (** Pulse roundtrip: varint encode→decode through an A.array buffer.
     Tests the 5-range varint encoding (1..5 bytes) at concrete boundaries. *)
@@ -134,6 +142,7 @@ fn test_stack_varint_roundtrip ()
   let Data.Codec.Pulse.DR_Inr _ = result_268435456;
   ()
 }
+
 
 (** Pulse error test: decode_varint overflow detection.
     Writes a 5-byte varint whose 5th byte exceeds the 15-value cap, then
@@ -158,6 +167,7 @@ fn test_stack_varint_overflow ()
   let Data.Codec.Pulse.DR_Inl _ = result;
   ()
 }
+
 
 (** Pulse roundtrip through the dispatch table:
     encode_bytes CT_Varint → decode_bytes CT_Varint. *)

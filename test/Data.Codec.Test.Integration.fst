@@ -25,6 +25,7 @@ open FStar.Seq
 open FStar.UInt8
 open FStar.UInt32
 
+
 (* ── Why --admit_smt_queries true ──
    This module is a coverage anchor file.  Each [let _x = f] binding
    mechanically enforces that [f] exists and has the expected type.
@@ -37,130 +38,497 @@ open FStar.UInt32
 
    Real tests live in [Data.Codec.Test.Roundtrip], which has zero admits.
 *)
+
+
 #push-options "--admit_smt_queries true"
 
+
 (* ── Concrete tests (no admit_smt_queries) ── *)
+
+
+(** [test_token_roundtrip] *)
 let _ct0 = Data.Codec.Test.Roundtrip.test_token_roundtrip
+
+
+(** [test_uint8_boundary_0] *)
 let _ct1 = Data.Codec.Test.Roundtrip.test_uint8_boundary_0
+
+
+(** [test_uint8_boundary_255] *)
 let _ct2 = Data.Codec.Test.Roundtrip.test_uint8_boundary_255
+
+
+(** [test_word16_boundary_0] *)
 let _ct3 = Data.Codec.Test.Roundtrip.test_word16_boundary_0
+
+
+(** [test_word16_boundary_255] *)
 let _ct4 = Data.Codec.Test.Roundtrip.test_word16_boundary_255
+
+
+(** [test_word16_boundary_256] *)
 let _ct5 = Data.Codec.Test.Roundtrip.test_word16_boundary_256
+
+
+(** [test_word16_boundary_65535] *)
 let _ct6 = Data.Codec.Test.Roundtrip.test_word16_boundary_65535
+
+
+(** [test_word32_boundary_0] *)
 let _ct7 = Data.Codec.Test.Roundtrip.test_word32_boundary_0
+
+
+(** [test_word32_boundary_max] *)
 let _ct8 = Data.Codec.Test.Roundtrip.test_word32_boundary_max
+
+
+(** [test_varint_boundary_0] *)
 let _ct9 = Data.Codec.Test.Roundtrip.test_varint_boundary_0
+
+
+(** [test_varint_boundary_127] *)
 let _ct10 = Data.Codec.Test.Roundtrip.test_varint_boundary_127
+
+
+(** [test_varint_boundary_128] *)
 let _ct11 = Data.Codec.Test.Roundtrip.test_varint_boundary_128
+
+
+(** [test_varint_boundary_16383] *)
 let _ct12 = Data.Codec.Test.Roundtrip.test_varint_boundary_16383
+
+
+(** [test_varint_boundary_16384] *)
 let _ct13 = Data.Codec.Test.Roundtrip.test_varint_boundary_16384
+
+
+(** [test_varint_boundary_2097151] *)
 let _ct14 = Data.Codec.Test.Roundtrip.test_varint_boundary_2097151
+
+
+(** [test_varint_boundary_2097152] *)
 let _ct15 = Data.Codec.Test.Roundtrip.test_varint_boundary_2097152
+
+
+(** [test_varint_boundary_268435455] *)
 let _ct16 = Data.Codec.Test.Roundtrip.test_varint_boundary_268435455
+
+
+(** [test_varint_boundary_268435456] *)
 let _ct17 = Data.Codec.Test.Roundtrip.test_varint_boundary_268435456
+
+
+(** [test_varint_boundary_max] *)
 let _ct18 = Data.Codec.Test.Roundtrip.test_varint_boundary_max
+
+
+(** [test_decode_empty_input] *)
 let _ct19 = Data.Codec.Test.Roundtrip.test_decode_empty_input
+
+
+(** [test_decode_truncated_word16] *)
 let _ct20 = Data.Codec.Test.Roundtrip.test_decode_truncated_word16
+
+
+(** [test_decode_truncated_word32] *)
 let _ct21 = Data.Codec.Test.Roundtrip.test_decode_truncated_word32
+
+
+(** [test_decode_varint_error_truncated] *)
 let _ct22 = Data.Codec.Test.Roundtrip.test_decode_varint_error_truncated
+
+
+(** [test_choice_c1_dominates] *)
 let _ct23 = Data.Codec.Test.Roundtrip.test_choice_c1_dominates
+
+
+(** [test_product_roundtrip] *)
 let _ct24 = Data.Codec.Test.Roundtrip.test_product_roundtrip
+
+
+(** [test_sum_roundtrip_inl] *)
 let _ct25 = Data.Codec.Test.Roundtrip.test_sum_roundtrip_inl
+
+
+(** [test_bytes_roundtrip] *)
 let _ct26 = Data.Codec.Test.Roundtrip.test_bytes_roundtrip
+
+
+(** [test_text_roundtrip] *)
 let _ct27 = Data.Codec.Test.Roundtrip.test_text_roundtrip
+
+
+(** [test_digits_to_int_roundtrip] *)
 let _ct28 = Data.Codec.Test.Roundtrip.test_digits_to_int_roundtrip
+
+
+(** [test_count_roundtrip] *)
 let _ct29 = Data.Codec.Test.Roundtrip.test_count_roundtrip
+
+
+(** [test_map_roundtrip] *)
 let _ct30 = Data.Codec.Test.Roundtrip.test_map_roundtrip
+
+
+(** [test_optional_some_roundtrip] *)
 let _ct31 = Data.Codec.Test.Roundtrip.test_optional_some_roundtrip
+
+
+(** [test_optional_none_roundtrip] *)
 let _ct32 = Data.Codec.Test.Roundtrip.test_optional_none_roundtrip
+
+
+(** [test_between_roundtrip] *)
 let _ct33 = Data.Codec.Test.Roundtrip.test_between_roundtrip
+
+
+(** [test_byteval_error_wrong_byte] *)
 let _ct34 = Data.Codec.Test.Roundtrip.test_byteval_error_wrong_byte
+
+
+(** [test_satisfy_error_fails_predicate] *)
 let _ct35 = Data.Codec.Test.Roundtrip.test_satisfy_error_fails_predicate
+
+
+(** [test_expected_sum_tag_error] *)
 let _ct36 = Data.Codec.Test.Roundtrip.test_expected_sum_tag_error
+
+
+(** [test_expected_text_error] *)
 let _ct37 = Data.Codec.Test.Roundtrip.test_expected_text_error
+
+
+(** [test_bytes_partial_match_error] *)
 let _ct38 = Data.Codec.Test.Roundtrip.test_bytes_partial_match_error
+
+
+(** [test_varint_5byte_oversized] *)
 let _ct39 = Data.Codec.Test.Roundtrip.test_varint_5byte_oversized
+
+
+(** [test_varint_low_overflow] *)
 let _ct40 = Data.Codec.Test.Roundtrip.test_varint_low_overflow
+
+
+(** [test_decode_uint8_empty] *)
 let _ct41 = Data.Codec.Test.Roundtrip.test_decode_uint8_empty
+
+
+(** [test_decode_byteval_empty] *)
 let _ct42 = Data.Codec.Test.Roundtrip.test_decode_byteval_empty
+
+
+(** [test_varint_truncated_2byte] *)
 let _ct43 = Data.Codec.Test.Roundtrip.test_varint_truncated_2byte
+
+
+(** [test_varint_truncated_3byte] *)
 let _ct44 = Data.Codec.Test.Roundtrip.test_varint_truncated_3byte
+
+
+(** [test_varint_truncated_4byte] *)
 let _ct45 = Data.Codec.Test.Roundtrip.test_varint_truncated_4byte
+
+
+(** [test_varint_truncated_5byte] *)
 let _ct46 = Data.Codec.Test.Roundtrip.test_varint_truncated_5byte
+
+
+(** [test_choice_c2_roundtrip] *)
 let _ct47 = Data.Codec.Test.Roundtrip.test_choice_c2_roundtrip
+
+
+(** [test_map_none_decode] *)
 let _ct48 = Data.Codec.Test.Roundtrip.test_map_none_decode
+
+
+(** [test_digits_to_int_failure] *)
 let _ct49 = Data.Codec.Test.Roundtrip.test_digits_to_int_failure
+
+
+(** [test_label_error_propagation] *)
 let _ct50 = Data.Codec.Test.Roundtrip.test_label_error_propagation
+
+
+(** [test_decode_truncated_word16le] *)
 let _ct51 = Data.Codec.Test.Roundtrip.test_decode_truncated_word16le
+
+
+(** [test_decode_truncated_word32le] *)
 let _ct52 = Data.Codec.Test.Roundtrip.test_decode_truncated_word32le
+
+
+(** [test_stack_token_roundtrip] *)
 let _ct53 = Data.Codec.Test.Pulse.test_stack_token_roundtrip
+
+
+(** [test_stack_uint8_roundtrip] *)
 let _ct54 = Data.Codec.Test.Pulse.test_stack_uint8_roundtrip
+
+
+(** [test_stack_byteval_roundtrip] *)
 let _ct55 = Data.Codec.Test.Pulse.test_stack_byteval_roundtrip
+
+
+(** [test_stack_word16be_roundtrip] *)
 let _ct56 = Data.Codec.Test.Pulse.test_stack_word16be_roundtrip
+
+
+(** [test_stack_word32be_roundtrip] *)
 let _ct57 = Data.Codec.Test.Pulse.test_stack_word32be_roundtrip
+
+
+(** [test_stack_word16le_roundtrip] *)
 let _ct58 = Data.Codec.Test.Pulse.test_stack_word16le_roundtrip
+
+
+(** [test_stack_word32le_roundtrip] *)
 let _ct59 = Data.Codec.Test.Pulse.test_stack_word32le_roundtrip
+
+
+(** [test_stack_varint_roundtrip] *)
 let _ct60 = Data.Codec.Test.Pulse.test_stack_varint_roundtrip
+
+
+(** [test_stack_varint_overflow] *)
 let _ct61 = Data.Codec.Test.Pulse.test_stack_varint_overflow
+
+
+(** [test_is_digit_byte_0x30] *)
 let _ct62 = Data.Codec.Test.Roundtrip.test_is_digit_byte_0x30
+
+
+(** [test_is_digit_byte_0x47] *)
 let _ct63 = Data.Codec.Test.Roundtrip.test_is_digit_byte_0x47
+
+
+(** [test_is_upper] *)
 let _ct64 = Data.Codec.Test.Roundtrip.test_is_upper
+
+
+(** [test_is_upper_false] *)
 let _ct65 = Data.Codec.Test.Roundtrip.test_is_upper_false
+
+
+(** [test_is_lower] *)
 let _ct66 = Data.Codec.Test.Roundtrip.test_is_lower
+
+
+(** [test_is_alpha] *)
 let _ct67 = Data.Codec.Test.Roundtrip.test_is_alpha
+
+
+(** [test_is_alphanum] *)
 let _ct68 = Data.Codec.Test.Roundtrip.test_is_alphanum
+
+
+(** [test_is_space_or_tab] *)
 let _ct69 = Data.Codec.Test.Roundtrip.test_is_space_or_tab
+
+
+(** [test_is_whitespace] *)
 let _ct70 = Data.Codec.Test.Roundtrip.test_is_whitespace
+
+
+(** [test_is_printable] *)
 let _ct71 = Data.Codec.Test.Roundtrip.test_is_printable
+
+
+(** [test_is_printable_false] *)
 let _ct72 = Data.Codec.Test.Roundtrip.test_is_printable_false
+
+
+(** [test_char_is_digit] *)
 let _ct73 = Data.Codec.Test.Roundtrip.test_char_is_digit
+
+
+(** [test_char_is_upper] *)
 let _ct74 = Data.Codec.Test.Roundtrip.test_char_is_upper
+
+
+(** [test_char_is_lower] *)
 let _ct75 = Data.Codec.Test.Roundtrip.test_char_is_lower
+
+
+(** [test_char_is_alpha] *)
 let _ct76 = Data.Codec.Test.Roundtrip.test_char_is_alpha
+
+
+(** [test_digit_byte_roundtrip] *)
 let _ct77 = Data.Codec.Test.Roundtrip.test_digit_byte_roundtrip
+
+
+(** [test_is_lower_false] *)
 let _ct78 = Data.Codec.Test.Roundtrip.test_is_lower_false
+
+
+(** [test_is_alpha_false] *)
 let _ct79 = Data.Codec.Test.Roundtrip.test_is_alpha_false
+
+
+(** [test_is_alphanum_false] *)
 let _ct80 = Data.Codec.Test.Roundtrip.test_is_alphanum_false
+
+
+(** [test_is_space_or_tab_false] *)
 let _ct81 = Data.Codec.Test.Roundtrip.test_is_space_or_tab_false
+
+
+(** [test_is_whitespace_false] *)
 let _ct82 = Data.Codec.Test.Roundtrip.test_is_whitespace_false
+
+
+(** [test_stack_varint_dispatch_roundtrip] *)
 let _ct83 = Data.Codec.Test.Pulse.test_stack_varint_dispatch_roundtrip
+
+
+(** [test_custom_roundtrip] *)
 let _ct84 = Data.Codec.Test.Roundtrip.test_custom_roundtrip
+
+
+(** [test_then_drop_roundtrip] *)
 let _ct85 = Data.Codec.Test.Roundtrip.test_then_drop_roundtrip
+
+
+(** [test_drop_then_roundtrip] *)
 let _ct86 = Data.Codec.Test.Roundtrip.test_drop_then_roundtrip
+
+
+(** [test_take_roundtrip] *)
 let _ct87 = Data.Codec.Test.Roundtrip.test_take_roundtrip
+
+
+(** [test_word16le_roundtrip] *)
 let _ct88 = Data.Codec.Test.Roundtrip.test_word16le_roundtrip
+
+
+(** [test_word32le_roundtrip] *)
 let _ct89 = Data.Codec.Test.Roundtrip.test_word32le_roundtrip
+
+
+(** [test_sum_roundtrip_inr] *)
 let _ct90 = Data.Codec.Test.Roundtrip.test_sum_roundtrip_inr
+
+
+(** [test_between_open_error] *)
 let _ct91 = Data.Codec.Test.Roundtrip.test_between_open_error
+
+
+(** [test_between_close_error] *)
 let _ct92 = Data.Codec.Test.Roundtrip.test_between_close_error
+
+
+(** [test_optional_bad_tag] *)
 let _ct93 = Data.Codec.Test.Roundtrip.test_optional_bad_tag
+
+
+(** [test_choice_neither_wfcv_enc] *)
 let _ct94 = Data.Codec.Test.Roundtrip.test_choice_neither_wfcv_enc
+
+
+(** [test_product_c2_fails] *)
 let _ct95 = Data.Codec.Test.Roundtrip.test_product_c2_fails
+
+
+(** [test_count_mid_failure] *)
 let _ct96 = Data.Codec.Test.Roundtrip.test_count_mid_failure
+
+
+(** [test_text_truncated] *)
 let _ct97 = Data.Codec.Test.Roundtrip.test_text_truncated
+
+
+(** [test_bytes_truncated] *)
 let _ct98 = Data.Codec.Test.Roundtrip.test_bytes_truncated
+
+
+(** [test_sum_inl_decode_fails] *)
 let _ct99 = Data.Codec.Test.Roundtrip.test_sum_inl_decode_fails
+
+
+(** [test_label_success] *)
 let _ct100 = Data.Codec.Test.Roundtrip.test_label_success
+
+
+(** [test_char_is_digit_false] *)
 let _ct101 = Data.Codec.Test.Roundtrip.test_char_is_digit_false
+
+
+(** [test_char_is_upper_false] *)
 let _ct102 = Data.Codec.Test.Roundtrip.test_char_is_upper_false
+
+
+(** [test_char_is_lower_false] *)
 let _ct103 = Data.Codec.Test.Roundtrip.test_char_is_lower_false
+
+
+(** [test_char_is_alpha_false] *)
 let _ct104 = Data.Codec.Test.Roundtrip.test_char_is_alpha_false
+
+
+(** [test_char_is_alphanum] *)
 let _ct105 = Data.Codec.Test.Roundtrip.test_char_is_alphanum
+
+
+(** [test_char_is_alphanum_false] *)
 let _ct106 = Data.Codec.Test.Roundtrip.test_char_is_alphanum_false
+
+
+(** [test_char_is_space_or_tab] *)
 let _ct107 = Data.Codec.Test.Roundtrip.test_char_is_space_or_tab
+
+
+(** [test_char_is_space_or_tab_false] *)
 let _ct108 = Data.Codec.Test.Roundtrip.test_char_is_space_or_tab_false
+
+
+(** [test_char_is_whitespace] *)
 let _ct109 = Data.Codec.Test.Roundtrip.test_char_is_whitespace
+
+
+(** [test_char_is_whitespace_false] *)
 let _ct110 = Data.Codec.Test.Roundtrip.test_char_is_whitespace_false
+
+
+(** [test_char_is_printable] *)
 let _ct111 = Data.Codec.Test.Roundtrip.test_char_is_printable
+
+
+(** [test_char_is_printable_false] *)
 let _ct112 = Data.Codec.Test.Roundtrip.test_char_is_printable_false
+
+
+(** [test_digit_byte_error] *)
 let _ct113 = Data.Codec.Test.Roundtrip.test_digit_byte_error
+
+
+(** [test_pure_roundtrip] *)
 let _ct114 = Data.Codec.Test.Roundtrip.test_pure_roundtrip
+
+
+(** [test_satisfy_roundtrip] *)
 let _ct115 = Data.Codec.Test.Roundtrip.test_satisfy_roundtrip
+
+
+(** [test_satisfy_empty] *)
 let _ct116 = Data.Codec.Test.Roundtrip.test_satisfy_empty
+
+
+(** [test_custom_error] *)
 let _ct117 = Data.Codec.Test.Roundtrip.test_custom_error
+
+
+(** [test_then_drop_c1_fails] *)
 let _ct118 = Data.Codec.Test.Roundtrip.test_then_drop_c1_fails
+
+
+(** [test_drop_then_c2_fails] *)
 let _ct119 = Data.Codec.Test.Roundtrip.test_drop_then_c2_fails
+
+
+(** [test_take_truncated] *)
 let _ct120 = Data.Codec.Test.Roundtrip.test_take_truncated
+
 
 (* ── Anchor numbering note ──
    Concrete tests: _ct0.._ct120 (121 anchors) cover roundtrip, error paths,
@@ -174,254 +542,869 @@ let _ct120 = Data.Codec.Test.Roundtrip.test_take_truncated
    Renumber at next major API version.
    ── *)
 
+
 (* ── Gap anchors — prevent accidental reuse of deleted anchor names ── *)
+
+
+(** [_pulse15_gap] *)
 let _pulse15_gap = ()
+
+
+(** [_pulse16_gap] *)
 let _pulse16_gap = ()
 
+
 (* ── Types + helpers ── *)
+
+
+(** [nat_of_int] *)
 let _t0  = nat_of_int
+
+
+(** [u32_of_nat] *)
 let _t1  = u32_of_nat
+
+
+(** [len_of_enc] *)
 let _t2  = len_of_enc
+
+
+(** [string_is_ascii] *)
 let _t3  = string_is_ascii
+
+
+(** [pow2] *)
 let _t4  = pow2
+
+
+(** [string_to_bytes] *)
 let _t5  = string_to_bytes
+
+
+(** [bytes_decode] *)
 let _t6  = bytes_decode
+
+
+(** [varint_decode_go] *)
 let _t7  = varint_decode_go
+
+
+(** [varint_encode_go] *)
 let _t8  = varint_encode_go
+
+
+(** [digits_encode] *)
 let _t9  = digits_encode
+
+
+(** [dec_nat] *)
 let _t10 = dec_nat
+
+
+(** [is_digit] *)
 let _t11 = is_digit
+
+
+(** [acc_digits] *)
 let _t12 = acc_digits
+
+
+(** [all_digits] *)
 let _t13 = all_digits
+
+
+(** [digits_to_int_decode_go] *)
 let _t14 = digits_to_int_decode_go
+
+
+(** [digits_to_int_decode] *)
 let _t15 = digits_to_int_decode
+
+
+(** [mk_decode_error] *)
 let _t16 = mk_decode_error
 
+
 (* ── New record fields (anchored via token) ── *)
+
+
+(** [dec_err_bound] *)
 let _rf0 = token.dec_err_bound
+
+
+(** [dec_consumed_bound] *)
 let _rf1 = token.dec_consumed_bound
 
+
 (* ── U32 bridge lemmas ── *)
+
+
+(** [lemma_10_lt_u32max] *)
 let _u0 = lemma_10_lt_u32max
+
+
+(** [lemma_bound_10] *)
 let _u1 = lemma_bound_10
+
+
+(** [u32_of_small_nat] *)
 let _u2 = u32_of_small_nat
+
+
+(** [lemma_u32_v_small_nat] *)
 let _u3 = lemma_u32_v_small_nat
+
+
+(** [lemma_u32_bound] *)
 let _u4 = lemma_u32_bound
+
+
+(** [lemma_u32_bound_transitive] *)
 let _u5 = lemma_u32_bound_transitive
+
+
+(** [lemma_seq_of_list_length] *)
 let _u6 = lemma_seq_of_list_length
+
+
+(** [lemma_decode_err_pos_bound] *)
 let _u7 = lemma_decode_err_pos_bound
+
+
+(** [lemma_seq_list_bij_rev] *)
 let _u8 = lemma_seq_list_bij_rev
 
+
 (* ── Bytes decode lemmas ── *)
+
+
+(** [lemma_bytes_decode_nil] *)
 let _b0 = lemma_bytes_decode_nil
+
+
+(** [lemma_bytes_decode_cons] *)
 let _b1 = lemma_bytes_decode_cons
+
+
+(** [lemma_bytes_decode_prefix] *)
 let _b2 = lemma_bytes_decode_prefix
+
+
+(** [lemma_bytes_decode_inr_consumed] *)
 let _b3 = lemma_bytes_decode_inr_consumed
+
+
+(** [lemma_bytes_decode_inl_bound] *)
 let _b4 = lemma_bytes_decode_inl_bound
+
+
+(** [lemma_bytes_decode_err_pos_le_input] *)
 let _b5 = lemma_bytes_decode_err_pos_le_input
+
+
+(** [lemma_bytes_decode_consumed_le_input] *)
 let _b6 = lemma_bytes_decode_consumed_le_input
 
+
 (* ── Varint lemmas ── *)
+
+
+(** [shift_result] *)
 let _v0 = shift_result
+
+
+(** [lemma_varint_decode_shift] *)
 let _v1 = lemma_varint_decode_shift
+
+
+(** [lemma_varint_decode_inr_bound] *)
 let _v2 = lemma_varint_decode_inr_bound
+
+
+(** [lemma_varint_decode_inr_bound_10] *)
 let _v3 = lemma_varint_decode_inr_bound_10
+
+
+(** [lemma_varint_decode_inl_len_bound] *)
 let _v4 = lemma_varint_decode_inl_len_bound
+
+
+(** [lemma_varint_encode_decode_roundtrip] *)
 let _v5 = lemma_varint_encode_decode_roundtrip
+
+
+(** [nbytes_of_varint] *)
 let _v6 = nbytes_of_varint
+
+
+(** [lemma_varint_enc_dec_1byte] *)
 let _v7 = lemma_varint_enc_dec_1byte
+
+
+(** [lemma_varint_enc_dec_2byte] *)
 let _v8 = lemma_varint_enc_dec_2byte
+
+
+(** [lemma_varint_enc_dec_3byte] *)
 let _v9 = lemma_varint_enc_dec_3byte
+
+
+(** [lemma_varint_enc_dec_4byte] *)
 let _v10 = lemma_varint_enc_dec_4byte
+
+
+(** [lemma_varint_enc_dec_5byte] *)
 let _v11 = lemma_varint_enc_dec_5byte
+
+
+(** [lemma_varint_2byte_arithmetic] *)
 let _v12 = lemma_varint_2byte_arithmetic
+
+
+(** [lemma_varint_3byte_arithmetic] *)
 let _v13 = lemma_varint_3byte_arithmetic
+
+
+(** [lemma_varint_4byte_arithmetic] *)
 let _v14 = lemma_varint_4byte_arithmetic
+
+
+(** [lemma_varint_5byte_arithmetic] *)
 let _v15 = lemma_varint_5byte_arithmetic
+
+
+(** [lemma_varint_decode_consumed_le_len] *)
 let _v16 = lemma_varint_decode_consumed_le_len
+
+
+(** [lemma_nbytes_of_varint_bound] *)
 let _v17 = lemma_nbytes_of_varint_bound
+
+
+(** [lemma_nbytes_of_varint_correct] *)
 let _v18 = lemma_nbytes_of_varint_correct
 
+
 (* ── Digit decode lemmas ── *)
+
+
+(** [lemma_digits_decode_inr_len_bound] *)
 let _d0 = lemma_digits_decode_inr_len_bound
+
+
+(** [lemma_digits_decode_go_len_bound] *)
 let _d1 = lemma_digits_decode_go_len_bound
+
+
+(** [lemma_list_to_slice] *)
 let _d2 = lemma_list_to_slice
 
+
 (* ── Infrastructure lemmas ── *)
+
+
+(** [lemma_slice_after_prefix] *)
 let _s0 = lemma_slice_after_prefix
+
+
+(** [lemma_slice_append_prefix] *)
 let _s1 = lemma_slice_append_prefix
+
+
+(** [lemma_slice_cons_spec] *)
 let _s2 = lemma_slice_cons_spec
+
+
+(** [lemma_bytes_self_prefix_spec] *)
 let _s3 = lemma_bytes_self_prefix_spec
+
+
+(** [lemma_seq_cons_append] *)
 let _s4 = lemma_seq_cons_append
+
+
+(** [lemma_seq_list_bij] *)
 let _s5 = lemma_seq_list_bij
+
+
+(** [lemma_word32_enc_bytes] *)
 let _s6 = lemma_word32_enc_bytes
 
+
 (* ── Product/sum bound lemmas ── *)
+
+
+(** [lemma_product_dec_err_bound] *)
 let _ps0 = lemma_product_dec_err_bound
+
+
+(** [lemma_product_dec_consumed_bound] *)
 let _ps1 = lemma_product_dec_consumed_bound
+
+
+(** [lemma_sum_dec_err_bound] *)
 let _ps2 = lemma_sum_dec_err_bound
+
+
+(** [lemma_sum_dec_consumed_bound] *)
 let _ps3 = lemma_sum_dec_consumed_bound
 
+
 (* ── Digit lemma infrastructure ── *)
+
+
+(** [lemma_all_digits_append_helper] *)
 let _dl0 = lemma_all_digits_append_helper
+
+
+(** [lemma_digits_encode_all_digits_helper] *)
 let _dl1 = lemma_digits_encode_all_digits_helper
+
+
+(** [lemma_acc_digits_append_helper] *)
 let _dl2 = lemma_acc_digits_append_helper
+
+
+(** [lemma_acc_digits_encode_helper] *)
 let _dl3 = lemma_acc_digits_encode_helper
+
+
+(** [nat_add] *)
 let _dl4 = nat_add
+
+
+(** [nat_incr] *)
 let _dl5 = nat_incr
+
+
+(** [lemma_digits_decode_shift] *)
 let _dl6 = lemma_digits_decode_shift
+
+
+(** [lemma_digits_process_list] *)
 let _dl7 = lemma_digits_process_list
+
+
+(** [lemma_digits_decode_encode_roundtrip] *)
 let _dl8 = lemma_digits_decode_encode_roundtrip
 
+
 (* ── Count helper functions (top-level) ── *)
+
+
+(** [count_enc_list] *)
 let _c0 = count_enc_list
+
+
+(** [count_dec_list] *)
 let _c1 = count_dec_list
+
+
+(** [count_wfcv_list] *)
 let _c2 = count_wfcv_list
+
+
+(** [count_wfcv_prop_list] *)
 let _c3 = count_wfcv_prop_list
+
+
+(** [count_rest_cond_list] *)
 let _c4 = count_rest_cond_list
+
+
+(** [count_roundtrip_list] *)
 let _c5 = count_roundtrip_list
+
+
+(** [count_dec_list_err_bound] *)
 let _c6 = count_dec_list_err_bound
+
+
+(** [count_dec_list_consumed_bound] *)
 let _c7 = count_dec_list_consumed_bound
 
+
 (* ── Combinators ── *)
+
+
+(** [token] *)
 let _co0  = token
+
+
+(** [byte_val] *)
 let _co1  = byte_val
+
+
+(** [satisfy] *)
 let _co2  = satisfy
+
+
+(** [pure] *)
 let _co3  = pure
+
+
+(** [text] *)
 let _co4  = text
+
+
+(** [bytes] *)
 let _co5  = bytes
+
+
+(** [uint8] *)
 let _co6  = uint8
+
+
+(** [word16be] *)
 let _co7  = word16be
+
+
+(** [word16le] *)
 let _co8  = word16le
+
+
+(** [word32be] *)
 let _co9  = word32be
+
+
+(** [word32le] *)
 let _co10 = word32le
+
+
+(** [varint] *)
 let _co11 = varint
+
+
+(** [digits_to_int] *)
 let _co12 = digits_to_int
+
+
+(** [custom] *)
 let _co13 = custom
+
+
+(** [product] *)
 let _co14 = product
+
+
+(** [sum] *)
 let _co15 = sum
+
+
+(** [map_] *)
 let _co16 = map_
+
+
+(** [count] *)
 let _co17 = count
+
+
+(** [label] *)
 let _co18 = label
 
+
 (* ── Derived combinators (Data.Codec.fst) ── *)
+
+
+(** [choice] *)
 let _dc0  = choice
+
+
+(** [then_drop] *)
 let _dc1  = then_drop
+
+
+(** [drop_then] *)
 let _dc2  = drop_then
+
+
+(** [( *> )] *)
 let _dc3  = ( *> )
+
+
+(** [( <* )] *)
 let _dc4  = ( <* )
+
+
+(** [( <|> )] *)
 let _dc5  = ( <|> )
+
+
+(** [between] *)
 let _dc6  = between
+
+
+(** [optional] *)
 let _dc7  = optional
+
+
+(** [take] *)
 let _dc8  = take
+
+
+(** [lemma_choice_c1_dominates] *)
 let _dc9  = lemma_choice_c1_dominates
+
+
+(** [lemma_choice_c2_dominates] *)
 let _dc10 = lemma_choice_c2_dominates
 
+
 (* ── Backward-compat aliases ── *)
+
+
+(** [word16_be] *)
 let _ba0 = word16_be
+
+
+(** [word32_be] *)
 let _ba1 = word32_be
+
+
+(** [word16_le] *)
 let _ba2 = word16_le
+
+
+(** [word32_le] *)
 let _ba3 = word32_le
+
+
+(** [varint_codec] *)
 let _ba4 = varint_codec
+
+
+(** [map] *)
 let _ba5 = map
+
+
+(** [equiv_map] *)
 let _ba6 = equiv_map
+
+
+(** [digits_to_int_alias] *)
 let _ba7 = digits_to_int_alias
+
+
+(** [digits_to_integer] *)
 let _ba8 = digits_to_integer
 
+
 (* ── Character predicates ── *)
+
+
+(** [is_upper] *)
 let _cp0 = is_upper
+
+
+(** [char_to_byte] *)
 let _cp0b = char_to_byte           (* extracted helper *)
+
+
+(** [is_lower] *)
 let _cp1 = is_lower
+
+
+(** [is_alpha] *)
 let _cp2 = is_alpha
+
+
+(** [is_alphanum] *)
 let _cp3 = is_alphanum
+
+
+(** [is_space_or_tab] *)
 let _cp4 = is_space_or_tab
+
+
+(** [is_whitespace] *)
 let _cp5 = is_whitespace
+
+
+(** [is_printable] *)
 let _cp6 = is_printable
+
+
+(** [char_is_digit] *)
 let _cp7 = char_is_digit
+
+
+(** [char_is_upper] *)
 let _cp8 = char_is_upper
+
+
+(** [char_is_lower] *)
 let _cp9 = char_is_lower
+
+
+(** [char_is_alpha] *)
 let _cp10 = char_is_alpha
+
+
+(** [char_is_alphanum] *)
 let _cp11 = char_is_alphanum
+
+
+(** [char_is_space_or_tab] *)
 let _cp12 = char_is_space_or_tab
+
+
+(** [char_is_whitespace] *)
 let _cp13 = char_is_whitespace
+
+
+(** [char_is_printable] *)
 let _cp14 = char_is_printable
+
+
+(** [digit_byte] *)
 let _cp15 = digit_byte
 
 
 (* ── Pulse.fst spec helpers (noextract pure specs) ── *)
+
+
+(** [varint_encode_pred] *)
 let _pulseL7a = Data.Codec.Pulse.varint_encode_pred
+
+
+(** [varint_decode_expected] *)
 let _pulseL8 = Data.Codec.Pulse.varint_decode_expected
+
+
+(** [lemma_varint_roundtrip_smtpat] *)
 let _pulseL8b = Data.Codec.Pulse.lemma_varint_roundtrip_smtpat
 
+
 (* ── Pulse.fst functions ── *)
+
+
+(** [encode_token] *)
 let _pulse0 = Data.Codec.Pulse.encode_token
+
+
+(** [encode_byteval] *)
 let _pulse1 = Data.Codec.Pulse.encode_byteval
+
+
+(** [encode_word16be] *)
 let _pulse2 = Data.Codec.Pulse.encode_word16be
+
+
+(** [encode_word32be] *)
 let _pulse3 = Data.Codec.Pulse.encode_word32be
+
+
+(** [encode_word16le] *)
 let _pulse4 = Data.Codec.Pulse.encode_word16le
+
+
+(** [encode_word32le] *)
 let _pulse5 = Data.Codec.Pulse.encode_word32le
+
+
+(** [encode_uint8] *)
 let _pulse5a = Data.Codec.Pulse.encode_uint8
+
+
+(** [encode_varint] *)
 let _pulse5b = Data.Codec.Pulse.encode_varint
+
+
+(** [decode_token] *)
 let _pulse6 = Data.Codec.Pulse.decode_token
+
+
+(** [decode_byteval] *)
 let _pulse7 = Data.Codec.Pulse.decode_byteval
+
+
+(** [decode_word16be] *)
 let _pulse8 = Data.Codec.Pulse.decode_word16be
+
+
+(** [decode_word32be] *)
 let _pulse9 = Data.Codec.Pulse.decode_word32be
+
+
+(** [decode_word16le] *)
 let _pulse10 = Data.Codec.Pulse.decode_word16le
+
+
+(** [decode_word32le] *)
 let _pulse11 = Data.Codec.Pulse.decode_word32le
+
+
+(** [decode_uint8] *)
 let _pulse11a = Data.Codec.Pulse.decode_uint8
+
+
+(** [decode_varint] *)
 let _pulse11b = Data.Codec.Pulse.decode_varint
+
+
+(** [encode_bytes] *)
 let _pulse12 = Data.Codec.Pulse.encode_bytes
+
+
+(** [decode_bytes] *)
 let _pulse13 = Data.Codec.Pulse.decode_bytes
+
+
+(** [lemma_pulse_encode_decode_match] *)
 let _pulse14 = Data.Codec.Pulse.lemma_pulse_encode_decode_match
+
+
+(** [lemma_pulse_roundtrip_token] *)
 let _pulse17 = Data.Codec.Pulse.lemma_pulse_roundtrip_token
+
+
+(** [lemma_pulse_roundtrip_byteval] *)
 let _pulse18 = Data.Codec.Pulse.lemma_pulse_roundtrip_byteval
+
+
+(** [lemma_pulse_roundtrip_word16be] *)
 let _pulse19 = Data.Codec.Pulse.lemma_pulse_roundtrip_word16be
+
+
+(** [lemma_pulse_roundtrip_word32be] *)
 let _pulse20 = Data.Codec.Pulse.lemma_pulse_roundtrip_word32be
+
+
+(** [lemma_pulse_roundtrip_word16le] *)
 let _pulse21 = Data.Codec.Pulse.lemma_pulse_roundtrip_word16le
+
+
+(** [lemma_pulse_roundtrip_word32le] *)
 let _pulse22 = Data.Codec.Pulse.lemma_pulse_roundtrip_word32le
+
+
+(** [lemma_pulse_roundtrip_uint8] *)
 let _pulse22a = Data.Codec.Pulse.lemma_pulse_roundtrip_uint8
+
+
+(** [lemma_pulse_roundtrip_varint] *)
 let _pulse22b = Data.Codec.Pulse.lemma_pulse_roundtrip_varint
+
 
 (* ── Combinator refinement lemmas (100% lemma coverage) ── *)
 
+
 (* byte_val *)
+
+
+(** [lemma_byte_val_wfcv_eq] *)
 let _rv0 = lemma_byte_val_wfcv_eq
+
+
+(** [lemma_byte_val_wfcv_prop_eq] *)
 let _rv1 = lemma_byte_val_wfcv_prop_eq
+
+
+(** [lemma_byte_val_rest_cond_eq] *)
 let _rv2 = lemma_byte_val_rest_cond_eq
 
+
 (* product *)
+
+
+(** [lemma_product_wfcv_eq] *)
 let _rp0 = lemma_product_wfcv_eq
+
+
+(** [lemma_product_wfcv_prop_eq] *)
 let _rp1 = lemma_product_wfcv_prop_eq
+
+
+(** [lemma_product_rest_cond_eq] *)
 let _rp2 = lemma_product_rest_cond_eq
+
+
+(** [lemma_product_enc_eq] *)
 let _rp3 = lemma_product_enc_eq
+
+
+(** [lemma_product_dec_eq] *)
 let _rp4 = lemma_product_dec_eq
 
+
 (* map_ *)
+
+
+(** [lemma_map_wfcv_eq] *)
 let _rm0 = lemma_map_wfcv_eq
+
+
+(** [lemma_map_wfcv_prop_eq] *)
 let _rm1 = lemma_map_wfcv_prop_eq
+
+
+(** [lemma_map_rest_cond_eq] *)
 let _rm2 = lemma_map_rest_cond_eq
+
+
+(** [lemma_map_enc_eq] *)
 let _rm3 = lemma_map_enc_eq
+
+
+(** [lemma_map_dec_eq] *)
 let _rm4 = lemma_map_dec_eq
 
+
 (* digits_to_int *)
+
+
+(** [lemma_digits_to_int_wfcv_eq] *)
 let _rd0 = lemma_digits_to_int_wfcv_eq
+
+
+(** [lemma_digits_to_int_rest_cond_eq] *)
 let _rd1 = lemma_digits_to_int_rest_cond_eq
 
+
 (* choice (c2 is anchored above as _dc10) *)
+
+
+(** [lemma_choice_c1_dominates] *)
 let _rc0 = lemma_choice_c1_dominates
 
+
 (* one_of *)
+
+
+(** [lemma_one_of_bytes_mismatch] *)
 let _ro0 = lemma_one_of_bytes_mismatch
 
+
 (* is_prefix_of / scan_until / take_until *)
+
+
+(** [lemma_is_prefix_len] *)
 let _ri0 = lemma_is_prefix_len
+
+
+(** [lemma_scan_until_content_le_len] *)
 let _ri1 = lemma_scan_until_content_le_len
+
+
+(** [lemma_scan_until_split_exact] *)
 let _ri2 = lemma_scan_until_split_exact
+
+
+(** [lemma_scan_until_found_bound] *)
 let _ri3 = lemma_scan_until_found_bound
+
+
+(** [lemma_take_until_dec_err_bound] *)
 let _ri4 = lemma_take_until_dec_err_bound
+
+
+(** [lemma_take_until_dec_consumed_bound] *)
 let _ri5 = lemma_take_until_dec_consumed_bound
 
-(* seq *)
-let _rq0 = lemma_seq_to_list_of_list_append
 
+(* seq *)
+
+
+(** [lemma_seq_to_list_of_list_append] *)
+let _rq0 = lemma_seq_to_list_of_list_append
 #pop-options

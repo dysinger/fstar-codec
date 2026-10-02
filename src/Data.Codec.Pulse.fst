@@ -47,7 +47,9 @@ open Data.Codec.Types
 
 module DC = Data.Codec.Types
 
+
 (* ── Types (carried over unchanged) ─────────────────────────────────── *)
+
 
 (** Flat codec tag — 8 leaf types extractable to C.
 
@@ -63,24 +65,31 @@ type codec_t =
   | CT_Word32LE   (** Little-endian 32-bit integer *)
   | CT_Varint     (** Variable-length integer *)
 
+
 (** C-compatible error codes. *)
 type error_code_c =
   | EC_UnexpectedEndOfInput
   | EC_ExpectedByte of U8.t
   | EC_Overflow
 
+
 (** C-compatible decode error. *)
 type decode_error_c = { code: error_code_c; pos: U32.t }
 
+
 (** C-compatible successful decode result. *)
 type decode_result_ok = { n: U32.t; value: U32.t }
+
 
 (** C-compatible decode result: either error or success. *)
 type decode_result_c =
   | DR_Inl of decode_error_c
   | DR_Inr of decode_result_ok
 
+
 (* ── Encode functions — each with full byte-level post-condition ─────── *)
+
+
 (** Encode an expected byte value into a buffer. Returns 1ul.
 
     @param x The single byte to write.
@@ -108,6 +117,7 @@ fn encode_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t)
   b.(j) <- x;
   1ul
 }
+
 
 (** Encode a single byte token into a buffer at offset. Returns 1ul.
 
@@ -138,6 +148,7 @@ fn encode_token (v: U32.t) (b: A.array U8.t) (i: U32.t)
   1ul
 }
 
+
 (** Encode an unsigned 8-bit integer as a single byte.
 
     @param v The value to encode (must satisfy [U32.v v < 256]).
@@ -166,6 +177,7 @@ fn encode_uint8 (v: U32.t) (b: A.array U8.t) (i: U32.t)
   b.(j) <- x;
   1ul
 }
+
 
 (** Encode a big-endian 16-bit integer as two bytes (high then low).
 
@@ -199,6 +211,7 @@ fn encode_word16be (v: U32.t) (b: A.array U8.t) (i: U32.t)
   2ul
 }
 
+
 (** Encode a little-endian 16-bit integer as two bytes (low then high).
 
     @param v The value to encode (must satisfy [U32.v v < 65536]).
@@ -230,6 +243,7 @@ fn encode_word16le (v: U32.t) (b: A.array U8.t) (i: U32.t)
   b.(j1) <- hi;
   2ul
 }
+
 
 (** Encode a big-endian 32-bit integer as four bytes (most significant first).
 
@@ -269,6 +283,7 @@ fn encode_word32be (v: U32.t) (b: A.array U8.t) (i: U32.t)
   4ul
 }
 
+
 (** Encode a little-endian 32-bit integer as four bytes (least significant first).
 
     @param v The value to encode.
@@ -307,6 +322,7 @@ fn encode_word32le (v: U32.t) (b: A.array U8.t) (i: U32.t)
   4ul
 }
 
+
 (** varint_encode_pred: canonical predicate describing varint-encoded bytes. *)
 (** Single source of truth (mirrors the dead leaf + Types.fst). *)
 (* varint_encode_pred: spec-only — noextract so Custard does not root it.
@@ -335,6 +351,7 @@ let varint_encode_pred (n: nat) (s: Seq.seq U8.t) (i: nat) : prop =
       U8.v (Seq.index s (i + 3)) == (n / 2097152) % 128 + 128 /\
       U8.v (Seq.index s (i + 4)) == n / 268435456)
   else False
+
 
 (** Encode a variable-length integer.  Conservative 5-byte precondition.
 
@@ -422,7 +439,10 @@ fn encode_varint (v: U32.t) (b: A.array U8.t) (i: U32.t)
   }
 }
 
+
 (* ── Decode functions — each with result-level post-condition ───────── *)
+
+
 (** Decode an expected byte value.
 
     @param x The single byte to match.
@@ -469,6 +489,7 @@ fn decode_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
   }
 }
 
+
 (** Decode a single-byte token.
 
     @param b The source buffer.
@@ -503,6 +524,7 @@ fn decode_token (b: A.array U8.t) (i: U32.t) (n: U32.t)
   }
 }
 
+
 (** Decode an unsigned 8-bit integer from a single byte.
 
     @param b The source buffer.
@@ -536,6 +558,7 @@ fn decode_uint8 (b: A.array U8.t) (i: U32.t) (n: U32.t)
     DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
   }
 }
+
 
 (** Decode a big-endian 16-bit integer from two bytes.
 
@@ -575,6 +598,7 @@ fn decode_word16be (b: A.array U8.t) (i: U32.t) (n: U32.t)
   }
 }
 
+
 (** Decode a little-endian 16-bit integer from two bytes.
 
     @param b The source buffer.
@@ -612,6 +636,7 @@ fn decode_word16le (b: A.array U8.t) (i: U32.t) (n: U32.t)
     DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
   }
 }
+
 
 (** Decode a big-endian 32-bit integer from four bytes.
 
@@ -659,6 +684,7 @@ fn decode_word32be (b: A.array U8.t) (i: U32.t) (n: U32.t)
   }
 }
 
+
 (** Decode a little-endian 32-bit integer from four bytes.
 
     @param b The source buffer.
@@ -704,6 +730,7 @@ fn decode_word32le (b: A.array U8.t) (i: U32.t) (n: U32.t)
     DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
   }
 }
+
 
 (** varint_decode_expected: pure spec for decode_varint.
 
@@ -763,6 +790,7 @@ let varint_decode_expected (i: U32.t) (n: U32.t) (s: Seq.seq U8.t { U32.v i + U3
             else
               let v4 = U32.add v3 (U32.mul (U32.uint_to_t b4_val) 268435456ul) in
               DR_Inr ({ n = 5ul; value = v4 })
+
 
 (** Decode a variable-length integer.
 
@@ -838,6 +866,7 @@ fn decode_varint (b: A.array U8.t) (i: U32.t) (n: U32.t)
 
 
 (* ── Dispatch functions — each with full per-constructor post-condition ─ *)
+
 
 (** [encode_bytes]: dispatch on [codec_t] with a full per-constructor byte spec.
 
@@ -919,6 +948,7 @@ fn encode_bytes (c: codec_t) (v: U32.t) (b: A.array U8.t) (i: U32.t)
   }
 }
 
+
 (** [decode_bytes]: dispatch on [codec_t] with a full per-constructor result spec.
 
     @param c The codec tag selecting the decoder.
@@ -994,7 +1024,10 @@ fn decode_bytes (c: codec_t) (b: A.array U8.t) (i: U32.t) (n: U32.t)
   }
 }
 
+
 (* ── Value-preserving roundtrip lemmas ─────────────────────────────── ─ *)
+
+
 (** [lemma_pulse_roundtrip_byteval]: encode then decode an expected byte.
 
     @param x The expected byte.
@@ -1021,6 +1054,7 @@ fn lemma_pulse_roundtrip_byteval (x: U8.t) (b: A.array U8.t) (i: U32.t) (n: U32.
   let r = decode_byteval x b i m;
   (m, r)
 }
+
 
 (** [lemma_pulse_roundtrip_token]: encode then decode preserves the value.
 
@@ -1050,6 +1084,7 @@ fn lemma_pulse_roundtrip_token (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t
   (m, r)
 }
 
+
 (** [lemma_pulse_roundtrip_uint8]: encode then decode a uint8 preserves the value.
 
     @param v The value (must satisfy [U32.v v < 256]).
@@ -1078,6 +1113,7 @@ fn lemma_pulse_roundtrip_uint8 (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.t
   (m, r)
 }
 
+
 (** [lemma_pulse_roundtrip_word16be]: encode then decode a big-endian uint16 roundtrips.
 
     @param v The value (must satisfy [U32.v v < 65536]).
@@ -1102,6 +1138,7 @@ fn lemma_pulse_roundtrip_word16be (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U3
   let r = decode_word16be b i m;
   (m, r)
 }
+
 
 (** [lemma_pulse_roundtrip_word16le]: encode then decode a little-endian uint16 roundtrips.
 
@@ -1128,6 +1165,7 @@ fn lemma_pulse_roundtrip_word16le (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U3
   (m, r)
 }
 
+
 (** [lemma_pulse_roundtrip_word32be]: encode then decode a big-endian uint32 roundtrips.
 
     @param v The value.
@@ -1151,6 +1189,7 @@ fn lemma_pulse_roundtrip_word32be (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U3
   let r = decode_word32be b i m;
   (m, r)
 }
+
 
 (** [lemma_pulse_roundtrip_word32le]: encode then decode a little-endian uint32 roundtrips.
 
@@ -1176,6 +1215,7 @@ fn lemma_pulse_roundtrip_word32le (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U3
   (m, r)
 }
 
+
 (** Structural lemma: varint_enc → varint_dec roundtrips.  SMTPat-triggered so
     SMT applies it whenever it sees [varint_decode_expected i (nbytes_of_varint v) s]
     — exactly the goal produced by composing [encode_varint] then [decode_varint].
@@ -1197,6 +1237,7 @@ let lemma_varint_roundtrip_smtpat (v: U32.t) (s: Seq.seq U8.t) (i: U32.t)
   else if n < 2097152 then DC.lemma_varint_3byte_arithmetic n
   else if n < 268435456 then DC.lemma_varint_4byte_arithmetic n
   else DC.lemma_varint_5byte_arithmetic n
+
 
 (** [lemma_pulse_roundtrip_varint]: encode then decode a varint roundtrips.
 
@@ -1224,6 +1265,7 @@ fn lemma_pulse_roundtrip_varint (v: U32.t) (b: A.array U8.t) (i: U32.t) (n: U32.
   let r = decode_varint b i m;
   (m, r)
 }
+
 
 (** [lemma_pulse_encode_decode_match]: dispatch-level master roundtrip lemma.
 
@@ -1279,4 +1321,3 @@ fn lemma_pulse_encode_decode_match (c: codec_t) (v: U32.t) (b: A.array U8.t) (i:
     CT_Varint -> { lemma_pulse_roundtrip_varint v b i n }
   }
 }
-
