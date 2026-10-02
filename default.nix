@@ -15,7 +15,7 @@
 #                 `--codegen OCaml`) AND the Pulse leaf (`Data.Codec.Pulse`,
 #                 `--custard_backend OCaml`) as one dune library.
 #   - `native`  — C11 shared/static lib of the Pulse leaf (`Data.Codec.Pulse`,
-#                 `--custard_backend C`), no karamel.
+#                 `--custard_backend C`).
 #
 # Returns { checked; ocaml; native; }.
 
@@ -177,7 +177,7 @@ let
   # ── native (C) backend ─────────────────────────────────────────────
   #
   # `--codegen Custard --custard_backend C` extracts the Pulse leaf
-  # (`Data.Codec.Pulse`) to C11 with no karamel runtime.  The whole module is a
+  # (`Data.Codec.Pulse`) to C11.  The whole module is a
   # library (no `main`), rooted with `--custard_entry_module`.  The C backend
   # requires `--custard_monomorphize_types true`.
 
@@ -228,7 +228,7 @@ let
         --custard_entry Data.Codec.Pulse.decode_bytes \
         --odir $out \
         src/Data.Codec.Pulse.fst || exit 1
-      # Compile the emitted C11 to a shared object + static lib (no karamel).
+      # Compile the emitted C11 to a shared object + static lib.
       cc -c -Wall -Wextra -Werror -std=c11 -O2 -fPIC -I $out $out/Custard.c -o $out/Custard.o
       if [ "$(uname -s)" = Darwin ]; then
         cc -dynamiclib $out/Custard.o -o $out/lib${pname}.dylib

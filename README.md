@@ -1,4 +1,4 @@
-# codec
+# codec — verified bidirectional codec library
 
 A formally verified, bidirectional serialization framework in
 [F\*](https://www.fstar-lang.org/).  **Twenty combinators, zero admits,
@@ -109,10 +109,9 @@ The build is three layers:
 | `default.nix` | builds `checked` / `ocaml` / `native` / `fsharp` | yes (`nix-build` / `import`) |
 | `Makefile` | the shell-script verify (module order) | yes (plain `fstar` on PATH) |
 
-Toolchain: F\* `v2026.09.20+lsp` (a fork pin carrying the LSP server).  The
-former KaRaMeL/`.krml`/`rust`/`wasm` targets were removed.  `Data.Codec.Pulse`
-is the Pulse leaf (8 leaf codecs + dispatch + roundtrip lemmas) that compiles
-to C11, OCaml, and F#.
+Toolchain: F\* `v2026.09.20+lsp` (a fork pin carrying the LSP server).
+`Data.Codec.Pulse` is the Pulse leaf (8 leaf codecs + dispatch + roundtrip
+lemmas) that compiles to C11, OCaml, and F#.
 
 ## Architecture
 

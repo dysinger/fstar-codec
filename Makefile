@@ -52,8 +52,7 @@ ALREADY_CACHED := Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore
 
 # F* names its cache files `<source>.checked` (e.g. src/Data.Codec.fst ->
 # Data.Codec.fst.checked) — the module's DOTS ARE PRESERVED in the .checked
-# filename (only the .krml extraction name turns dots into underscores).  So
-# the `check` prerequisite MUST use the raw module name, not `subst .,_`.
+# filename.  So the `check` prerequisite MUST use the raw module name, not `subst .,_`.
 # (`subst .,_` here would look for Data_Codec.fst.checked, which F* never
 # writes, leaving `make check` permanently out-of-date.)
 # Test modules: the two coverage/roundtrip modules plus the Pulse buffer

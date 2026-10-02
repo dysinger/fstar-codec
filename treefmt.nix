@@ -14,9 +14,8 @@
 # The `.fst`/`.fsti` files stay hand-formatted.
 #
 # Markdown (`*.md`) is also left out: the prose docs (AGENTS.md, README.md,
-# openspec changes, LICENSE/CHANGELOG/API) are hand-written with intentional
-# double-space sentence gaps and `*`/`F*` emphasis that prettier rewrites into
-# churn.  `../db/treefmt.nix` makes the same call (it excludes `*.md`).
+# API.md, LICENSE/CHANGELOG) are hand-written with intentional double-space
+# sentence gaps and `*`/`F*` emphasis that prettier rewrites into churn.
 
 _: {
   projectRootFile = "flake.nix";
