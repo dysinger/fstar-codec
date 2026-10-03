@@ -2410,7 +2410,190 @@ let alt (#a #b:Type) (c1: codec a) (c2: codec b) (p1: byte -> bool) : codec (eit
 #pop-options
 
 
-(** 21. one_of — terminated-literal choice *)
+
+(** Combinators 21/22: satisfy_many0 / satisfy_many1 — variable-width predicate run.
+
+    The missing "consume while a predicate holds" primitive.  [satisfy_many0 f]
+    decodes a ZERO-or-more run of bytes satisfying [f]; [satisfy_many1 f] a
+    ONE-or-more run.  This is the generic variable-width run that
+    [digits_to_int] proves concretely for [is_digit] ([lemma_digits_process_list]);
+    here the predicate is a SYMBOLIC [f : byte -> Tot bool].
+
+    The decoder scans a maximal leading run at the LIST level (via a top-level
+    [let rec] over the list — NOT a nested [let rec read], Warning 242).  The
+    framing [rest_cond] is the precise stop condition:
+
+    ```
+    rest_cond xs r = Seq.length r = 0 \/ not (f (Seq.index r 0))
+    ```
+
+    i.e. the suffix is empty or begins with a byte [f] rejects, so the run does
+    not over-consume into the suffix.  The generic roundtrip is proven in THIS
+    module (where [lemma_seq_to_list_of_list_append] is transparent) — the
+    fstar-proofs §11/§60 placement rule. *)
+
+(** [satisfy_run_scan] — scan a maximal leading run of bytes satisfying [f].
+
+    Top-level [let rec] (NOT nested — Warning 242).  Returns [(run, rest)] where
+    [run] is the maximal prefix of [bs] whose every byte satisfies [f], and
+    [rest] is the (possibly empty) remainder whose head [f] rejects. *)
+let rec satisfy_run_scan (f: byte -> Tot bool) (bs: list byte)
+  : Tot (list byte & list byte) (decreases bs) =
+  match bs with
+  | [] -> ([], [])
+  | b :: tl ->
+      if f b then
+        let (run, rest) = satisfy_run_scan f tl in
+        (b :: run, rest)
+      else ([], bs)
+
+
+(** Lemma: the scan is self-consistent on a [for_all f] prefix plus a rejected
+    head.  When [for_all f xs] and [rest] is empty-or-head-rejected, scanning
+    [xs ++ rest] yields exactly [(xs, rest)].  This is [lemma_digits_process_list]
+    generalized from [is_digit] to a symbolic [f]. *)
+#push-options "--z3rlimit 120"
+let rec lemma_satisfy_run_scan_self
+  (f: byte -> Tot bool) (xs: list byte) (rest: list byte)
+  : Lemma
+    (requires
+      FStar.List.Tot.for_all f xs /\
+      (match rest with
+       | [] -> True
+       | r :: _ -> not (f r)))
+    (ensures satisfy_run_scan f (xs @ rest) == (xs, rest))
+    (decreases xs)
+  = match xs with
+    | [] ->
+        (match rest with
+         | [] -> ()
+         | r :: _ -> ())
+    | x :: xsl ->
+        assert (f x);
+        lemma_satisfy_run_scan_self f xsl rest;
+        assert (satisfy_run_scan f (xsl @ rest) == (xsl, rest));
+        ()
+#pop-options
+
+
+(** Lemma: the head of [Seq.seq_to_list s] is [Seq.index s 0] (when non-empty). *)
+#push-options "--z3rlimit 40"
+let lemma_seq_to_list_head_is_index (s: byte_seq) : Lemma
+  (requires Seq.length s > 0)
+  (ensures (match Seq.seq_to_list s with
+            | [] -> False
+            | hd :: _ -> hd == Seq.index s 0))
+  =
+  let hd = Seq.index s 0 in
+  let tl = Seq.slice s 1 (Seq.length s) in
+  FStar.Seq.Properties.lemma_split s 1;
+  FStar.Seq.Base.lemma_seq_to_list_cons hd tl;
+  ()
+#pop-options
+
+
+(** Roundtrip self-scan: crossing the [byte_seq]↔[list byte] boundary leaves the
+    maximal run intact.  Chained via [lemma_seq_to_list_of_list_append] (prefix)
+    + [lemma_seq_to_list_head_is_index] (suffix head) so the sequence-level
+    framing reaches the list-level [lemma_satisfy_run_scan_self]. *)
+#push-options "--z3rlimit 120"
+let lemma_satisfy_run_scan_seq_self
+  (f: byte -> Tot bool) (xs: list byte) (r: byte_seq)
+  : Lemma
+    (requires
+      FStar.List.Tot.for_all f xs /\
+      (Seq.length r = 0 \/ not (f (Seq.index r 0))))
+    (ensures
+      satisfy_run_scan f (Seq.seq_to_list (seq_of_list xs `Seq.append` r))
+      == (xs, Seq.seq_to_list r))
+  = lemma_seq_to_list_of_list_append xs r;
+    assert (Seq.seq_to_list (seq_of_list xs `Seq.append` r) == xs @ Seq.seq_to_list r);
+    (if Seq.length r = 0 then ()
+     else lemma_seq_to_list_head_is_index r);
+    lemma_satisfy_run_scan_self f xs (Seq.seq_to_list r);
+    ()
+#pop-options
+
+
+(** [satisfy_run_dec] — decoder for [satisfy_many0]/[satisfy_many1] (shared).
+
+    Converts to a list ONCE at the boundary ([Seq.seq_to_list]), scans the
+    maximal run, and returns the run plus its consumed byte count.  A run is
+    always well-formed (the scanner admits any list; only [satisfy_many1]'s
+    wfcv adds the non-empty guard), so the decoder never fails. *)
+let satisfy_run_dec (f: byte -> Tot bool) (s: byte_seq) : Tot (decode_result (list byte)) =
+  let (run, _rest) = satisfy_run_scan f (Seq.seq_to_list s) in
+  Inr (run, List.Tot.length run)
+
+
+(** Lemma: the run consumed by [satisfy_run_scan] is no longer than the input. *)
+let rec lemma_satisfy_run_content_le_len (f: byte -> Tot bool) (bs: list byte) : Lemma
+  (ensures List.Tot.length (fst (satisfy_run_scan f bs)) <= List.Tot.length bs)
+  (decreases bs)
+  = match bs with
+    | [] -> ()
+    | b :: tl ->
+        if f b then begin
+          lemma_satisfy_run_content_le_len f tl;
+          ()
+        end else ()
+
+
+(** Combinator 21: [satisfy_many0] — decode a zero-or-more run of bytes satisfying [f]. *)
+#push-options "--z3rlimit 120"
+let satisfy_many0 (f: byte -> Tot bool) : codec (list byte) = {
+  enc       = (fun xs -> seq_of_list xs);
+  dec       = (fun s -> satisfy_run_dec f s);
+  wfcv      = (fun xs -> FStar.List.Tot.for_all f xs);
+  wfcv_prop = (fun _ -> True);
+  rest_cond = (fun _ r -> Seq.length r = 0 \/ not (f (Seq.index r 0)));
+  roundtrip = (fun xs r ->
+    // wfcv xs = for_all f xs; rest_cond xs r = (|r| = 0 \/ not (f (index r 0)))
+    assert (FStar.List.Tot.for_all f xs);
+    assert (Seq.length r = 0 \/ not (f (Seq.index r 0)));
+    lemma_satisfy_run_scan_seq_self f xs r;
+    lemma_seq_of_list_length xs;
+    ());
+  dec_err_bound = (fun s -> ());
+  dec_consumed_bound = (fun s ->
+    let bs = Seq.seq_to_list s in
+    lemma_satisfy_run_content_le_len f bs;
+    ());
+}
+#pop-options
+
+
+(** Combinator 22: [satisfy_many1] — decode a one-or-more run of bytes satisfying [f].
+
+    A direct sibling of [satisfy_many0] (not [map_]-guarded) so the generic
+    roundtrip discharges cleanly at ≤ rlimit 120; the non-empty guard is folded
+    into [wfcv] ([Cons? xs]), matching [lemma_digits_process_list]'s [Cons? ds]. *)
+#push-options "--z3rlimit 120"
+let satisfy_many1 (f: byte -> Tot bool) : codec (list byte) = {
+  enc       = (fun xs -> seq_of_list xs);
+  dec       = (fun s -> satisfy_run_dec f s);
+  wfcv      = (fun xs -> Cons? xs && FStar.List.Tot.for_all f xs);
+  wfcv_prop = (fun _ -> True);
+  rest_cond = (fun _ r -> Seq.length r = 0 \/ not (f (Seq.index r 0)));
+  roundtrip = (fun xs r ->
+    // wfcv xs = Cons? xs && for_all f xs; rest_cond xs r = (|r| = 0 \/ not (f (index r 0)))
+    assert (Cons? xs);
+    assert (FStar.List.Tot.for_all f xs);
+    assert (Seq.length r = 0 \/ not (f (Seq.index r 0)));
+    lemma_satisfy_run_scan_seq_self f xs r;
+    lemma_seq_of_list_length xs;
+    ());
+  dec_err_bound = (fun s -> ());
+  dec_consumed_bound = (fun s ->
+    let bs = Seq.seq_to_list s in
+    lemma_satisfy_run_content_le_len f bs;
+    ());
+}
+#pop-options
+
+
+
+(** Helper A: one_of — terminated-literal choice *)
 
 
 (** Mismatch helper for [one_of]: [x] and [y] differ within [min |x| |y|]
@@ -2498,7 +2681,7 @@ let rec one_of_mem (#a:eqtype) (pairs: list (a & list byte)) (v: a) : Tot bool (
     proof is the lower-risk path and is what xml/json needs first. *)
 
 
-(** Helper 21: one_of — ordered terminated-literal choice (encode/decode).
+(** Helper A: one_of — ordered terminated-literal choice (encode/decode).
 
     @param pairs The [(value, literal)] pairs, value type [a: eqtype].
     NOT a full [codec] (roundtrip is per-instantiation; see the NOTE above).
@@ -2627,7 +2810,7 @@ let lemma_byte_val_rest_cond_eq (b: byte) (r: byte_seq) : Lemma
   = ()
 
 
-(** Helper 22: take_until — delimiter-terminated content run.
+(** Helper B: take_until — delimiter-terminated content run.
 
     Scans a LIST-level content run that stops exactly at a multi-byte
     delimiter.  This is the verified primitive for delimiter-aware content
@@ -2825,190 +3008,3 @@ let lemma_take_until_dec_consumed_bound (delim: list byte)
     the roundtrip for a concrete delimiter must be proven at the call site
     (the [custom] codec's [roundtrip] argument) by [lemma_seq_list_bij_rev]
     + [assert_norm] on the concrete [scan_until_delim] (fstar-proofs §60). *)
-
-
-(** Combinators 21/22: satisfy_many0 / satisfy_many1 — variable-width predicate run.
-
-    The missing "consume while a predicate holds" primitive.  [satisfy_many0 f]
-    decodes a ZERO-or-more run of bytes satisfying [f]; [satisfy_many1 f] a
-    ONE-or-more run.  This is the generic variable-width run that
-    [digits_to_int] proves concretely for [is_digit] ([lemma_digits_process_list]);
-    here the predicate is a SYMBOLIC [f : byte -> Tot bool].
-
-    The decoder scans a maximal leading run at the LIST level (via a top-level
-    [let rec] over the list — NOT a nested [let rec read], Warning 242).  The
-    framing [rest_cond] is the precise stop condition:
-
-    ```
-    rest_cond xs r = Seq.length r = 0 \/ not (f (Seq.index r 0))
-    ```
-
-    i.e. the suffix is empty or begins with a byte [f] rejects, so the run does
-    not over-consume into the suffix.  The generic roundtrip is proven in THIS
-    module (where [lemma_seq_to_list_of_list_append] is transparent) — the
-    fstar-proofs §11/§60 placement rule. *)
-
-
-(** [satisfy_run_scan] — scan a maximal leading run of bytes satisfying [f].
-
-    Top-level [let rec] (NOT nested — Warning 242).  Returns [(run, rest)] where
-    [run] is the maximal prefix of [bs] whose every byte satisfies [f], and
-    [rest] is the (possibly empty) remainder whose head [f] rejects. *)
-let rec satisfy_run_scan (f: byte -> Tot bool) (bs: list byte)
-  : Tot (list byte & list byte) (decreases bs) =
-  match bs with
-  | [] -> ([], [])
-  | b :: tl ->
-      if f b then
-        let (run, rest) = satisfy_run_scan f tl in
-        (b :: run, rest)
-      else ([], bs)
-
-
-(** Lemma: the scan is self-consistent on a [for_all f] prefix plus a rejected
-    head.  When [for_all f xs] and [rest] is empty-or-head-rejected, scanning
-    [xs ++ rest] yields exactly [(xs, rest)].  This is [lemma_digits_process_list]
-    generalized from [is_digit] to a symbolic [f]. *)
-#push-options "--z3rlimit 120"
-let rec lemma_satisfy_run_scan_self
-  (f: byte -> Tot bool) (xs: list byte) (rest: list byte)
-  : Lemma
-    (requires
-      FStar.List.Tot.for_all f xs /\
-      (match rest with
-       | [] -> True
-       | r :: _ -> not (f r)))
-    (ensures satisfy_run_scan f (xs @ rest) == (xs, rest))
-    (decreases xs)
-  = match xs with
-    | [] ->
-        (match rest with
-         | [] -> ()
-         | r :: _ -> ())
-    | x :: xsl ->
-        assert (f x);
-        lemma_satisfy_run_scan_self f xsl rest;
-        assert (satisfy_run_scan f (xsl @ rest) == (xsl, rest));
-        ()
-#pop-options
-
-
-(** Roundtrip bridge for [satisfy_run_scan] at the [byte_seq] boundary.
-
-    [satisfy_run_scan f (Seq.seq_to_list (seq_of_list xs `Seq.append` r))
-     == (xs, Seq.seq_to_list r)] for a [for_all f xs] prefix and a suffix [r]
-    that is empty-or-head-rejected.  Chained via the transparent
-    [lemma_seq_to_list_of_list_append] (the §11 bridge, proven in this module)
-    and the head bridge [lemma_seq_to_list_head_is_index]. *)
-
-
-(** Lemma: the head of [Seq.seq_to_list s] is [Seq.index s 0] (when non-empty). *)
-#push-options "--z3rlimit 40"
-let lemma_seq_to_list_head_is_index (s: byte_seq) : Lemma
-  (requires Seq.length s > 0)
-  (ensures (match Seq.seq_to_list s with
-            | [] -> False
-            | hd :: _ -> hd == Seq.index s 0))
-  =
-  let hd = Seq.index s 0 in
-  let tl = Seq.slice s 1 (Seq.length s) in
-  FStar.Seq.Properties.lemma_split s 1;
-  FStar.Seq.Base.lemma_seq_to_list_cons hd tl;
-  ()
-#pop-options
-
-
-#push-options "--z3rlimit 120"
-let lemma_satisfy_run_scan_seq_self
-  (f: byte -> Tot bool) (xs: list byte) (r: byte_seq)
-  : Lemma
-    (requires
-      FStar.List.Tot.for_all f xs /\
-      (Seq.length r = 0 \/ not (f (Seq.index r 0))))
-    (ensures
-      satisfy_run_scan f (Seq.seq_to_list (seq_of_list xs `Seq.append` r))
-      == (xs, Seq.seq_to_list r))
-  = lemma_seq_to_list_of_list_append xs r;
-    assert (Seq.seq_to_list (seq_of_list xs `Seq.append` r) == xs @ Seq.seq_to_list r);
-    (if Seq.length r = 0 then ()
-     else lemma_seq_to_list_head_is_index r);
-    lemma_satisfy_run_scan_self f xs (Seq.seq_to_list r);
-    ()
-#pop-options
-
-
-(** [satisfy_run_dec] — decoder for [satisfy_many0]/[satisfy_many1] (shared).
-
-    Converts to a list ONCE at the boundary ([Seq.seq_to_list]), scans the
-    maximal run, and returns the run plus its consumed byte count.  A run is
-    always well-formed (the scanner admits any list; only [satisfy_many1]'s
-    wfcv adds the non-empty guard), so the decoder never fails. *)
-let satisfy_run_dec (f: byte -> Tot bool) (s: byte_seq) : Tot (decode_result (list byte)) =
-  let (run, _rest) = satisfy_run_scan f (Seq.seq_to_list s) in
-  Inr (run, List.Tot.length run)
-
-
-(** Lemma: the run consumed by [satisfy_run_scan] is no longer than the input. *)
-let rec lemma_satisfy_run_content_le_len (f: byte -> Tot bool) (bs: list byte) : Lemma
-  (ensures List.Tot.length (fst (satisfy_run_scan f bs)) <= List.Tot.length bs)
-  (decreases bs)
-  = match bs with
-    | [] -> ()
-    | b :: tl ->
-        if f b then begin
-          lemma_satisfy_run_content_le_len f tl;
-          ()
-        end else ()
-
-
-(** [satisfy_many0] — decode a zero-or-more run of bytes satisfying [f]. *)
-#push-options "--z3rlimit 120"
-let satisfy_many0 (f: byte -> Tot bool) : codec (list byte) = {
-  enc       = (fun xs -> seq_of_list xs);
-  dec       = (fun s -> satisfy_run_dec f s);
-  wfcv      = (fun xs -> FStar.List.Tot.for_all f xs);
-  wfcv_prop = (fun _ -> True);
-  rest_cond = (fun _ r -> Seq.length r = 0 \/ not (f (Seq.index r 0)));
-  roundtrip = (fun xs r ->
-    // wfcv xs = for_all f xs; rest_cond xs r = (|r| = 0 \/ not (f (index r 0)))
-    assert (FStar.List.Tot.for_all f xs);
-    assert (Seq.length r = 0 \/ not (f (Seq.index r 0)));
-    lemma_satisfy_run_scan_seq_self f xs r;
-    lemma_seq_of_list_length xs;
-    ());
-  dec_err_bound = (fun s -> ());
-  dec_consumed_bound = (fun s ->
-    let bs = Seq.seq_to_list s in
-    lemma_satisfy_run_content_le_len f bs;
-    ());
-}
-#pop-options
-
-
-(** [satisfy_many1] — decode a one-or-more run of bytes satisfying [f].
-
-    A direct sibling of [satisfy_many0] (not [map_]-guarded) so the generic
-    roundtrip discharges cleanly at ≤ rlimit 120; the non-empty guard is folded
-    into [wfcv] ([Cons? xs]), matching [lemma_digits_process_list]'s [Cons? ds]. *)
-#push-options "--z3rlimit 120"
-let satisfy_many1 (f: byte -> Tot bool) : codec (list byte) = {
-  enc       = (fun xs -> seq_of_list xs);
-  dec       = (fun s -> satisfy_run_dec f s);
-  wfcv      = (fun xs -> Cons? xs && FStar.List.Tot.for_all f xs);
-  wfcv_prop = (fun _ -> True);
-  rest_cond = (fun _ r -> Seq.length r = 0 \/ not (f (Seq.index r 0)));
-  roundtrip = (fun xs r ->
-    // wfcv xs = Cons? xs && for_all f xs; rest_cond xs r = (|r| = 0 \/ not (f (index r 0)))
-    assert (Cons? xs);
-    assert (FStar.List.Tot.for_all f xs);
-    assert (Seq.length r = 0 \/ not (f (Seq.index r 0)));
-    lemma_satisfy_run_scan_seq_self f xs r;
-    lemma_seq_of_list_length xs;
-    ());
-  dec_err_bound = (fun s -> ());
-  dec_consumed_bound = (fun s ->
-    let bs = Seq.seq_to_list s in
-    lemma_satisfy_run_content_le_len f bs;
-    ());
-}
-#pop-options
