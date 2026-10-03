@@ -46,20 +46,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extracted `Data.Codec` out of the original monorepo into a standalone
   repository built from `fstar-nix-flake-template`.
 - Three source modules:
-  - `Data.Codec.Types` — the `codec a` record and its 20 base combinators.
+  - `Data.Codec.Types` — the `codec a` record and its 22 base combinators
+    (13 primitives + 7 combinators + 2 variable-width predicate runs;
+    `one_of`/`take_until` are (enc, dec, wfcv) triple helpers, not records).
   - `Data.Codec` — derived combinators, operator aliases, character predicates.
-  - `Data.Codec.Pulse` — C-extractable `.Low` leaf codecs.
-- Two test modules:
-  - `Data.Codec.Test.Roundtrip`
-  - `Data.Codec.Test.Integration`
-- Nix flake targets: `.#codec-checked` (verify) and
-  `.#codec-krml` (KaRaMeL extraction of the `.Low` module).
+  - `Data.Codec.Pulse` — C-extractable Pulse leaf codecs (8 types), buffer
+    I/O, and roundtrip lemmas.
+- Three test modules:
+  - `Data.Codec.Test.Roundtrip` — 115 pure roundtrip/error-path tests.
+  - `Data.Codec.Test.Pulse` — 10 buffer-based Pulse roundtrip/error tests.
+  - `Data.Codec.Test.Integration` — binds every lemma/test, enforcing coverage.
+- Nix flake targets: `.#checked`, `.#ocaml`, `.#native`, `.#fsharp`.
 - Dual licensing: AGPL-3.0-or-later, or a commercial license from the author.
 
 ### Notes
 
 - Zero admits / zero magic / zero `assume` across all modules.
-- The shipped surface is the verified `.checked` cache plus the `.krml`
-  intermediate IR; C co-extraction of the `.Low` layer is a separate
-  KaRaMeL/krmllib concern (see the `flake.nix` note about
-  `FStar.UInt8.uint_to_t`).
+- The authoritative verification gate is `.#checked`; the Pulse leaf extracts
+  to C11/OCaml/F# via Custard (`--custard_backend C`).

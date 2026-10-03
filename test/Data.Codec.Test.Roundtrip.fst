@@ -4,7 +4,7 @@
 (**
 Data.Codec.Test.Roundtrip — Concrete roundtrip and error-path tests.
 
-111 concrete tests with ZERO admits.  Each test calls encode, decode,
+115 concrete tests with ZERO admits.  Each test calls encode, decode,
 and asserts the expected result.  Uses pure combinators only; the buffer
 roundtrip tests live in [Data.Codec.Test.Pulse].
 

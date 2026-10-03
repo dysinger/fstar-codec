@@ -22,10 +22,5 @@ cache/
 # Empty scratch dirs
 runtime/
 
-# Scratch and planning are NEVER committed.  `spike/` is throwaway `.fst`/`.c`
-# experiments; `openspec/` is uncommitted change-proposal working notes.
-spike/
-openspec/
-
 # SMT query dumps from `fstar.exe --log_queries` (hang diagnosis)
 queries-*.smt2

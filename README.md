@@ -1,7 +1,7 @@
 # codec — verified bidirectional codec library
 
 A formally verified, bidirectional serialization framework in
-[F\*](https://www.fstar-lang.org/).  **Twenty combinators, zero admits,
+[F\*](https://www.fstar-lang.org/).  **Twenty-two combinators, zero admits,
 every proof mechanically checked.**
 
 ## What it is
@@ -51,19 +51,20 @@ compile to C for use at the byte-buffer level.
 
 - **One verified type.**  A single `codec a` record: `enc`, `dec`,
   a well-formedness guard, and a roundtrip lemma field.
-- **Twenty combinators.**  Primitives (`token`, `byte_val`, `satisfy`, `pure`,
-  `text`, `bytes`, `uint8`, `word16be`, `word16le`, `word32be`, `word32le`,
-  `varint`, `digits_to_int`) plus combinators (`custom`, `product`, `sum`,
-  `map_`, `count`, `label`, `alt`), and the operator aliases (`<|>`, `*>`, `<*`).
-  The ad-hoc helpers `one_of` and `take_until` return (enc, dec, wfcv) triples,
-  not `codec` records.
+- **Twenty-two combinators.**  Primitives (`token`, `byte_val`, `satisfy`,
+  `pure`, `text`, `bytes`, `uint8`, `word16be`, `word16le`, `word32be`,
+  `word32le`, `varint`, `digits_to_int`) plus combinators (`custom`, `product`,
+  `sum`, `map_`, `count`, `label`, `alt`) and the variable-width predicate runs
+  (`satisfy_many0`, `satisfy_many1`), plus the operator aliases (`<|>`, `*>`,
+  `<*`).  The ad-hoc helpers `one_of` and `take_until` return (enc, dec, wfcv)
+  triples, not `codec` records.
 - **Proven roundtrips.**  Every combinator carries a lemma; no `admit`, no
   `assume`, no `admit_smt_queries` (the anchor test module uses a scoped,
   semantically-neutral `--admit_smt_queries true` — see `AGENTS.md`).
 - **C extraction.**  The Pulse leaf codecs extract to C with byte-level
   post-conditions.
-- **A real test suite.**  121 roundtrip and error-path tests (111 pure + 10
-  Pulse buffer tests), all verified.
+- **A real test suite.**  115 pure roundtrip/error-path tests plus 10 Pulse
+  buffer tests, all verified.
 
 ## Modules
 

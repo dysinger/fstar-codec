@@ -1019,12 +1019,48 @@ let _co17 = count
 let _co18 = label
 
 
+(** [alt] *)
+let _co19 = alt
+
+
+(** [alt_enc] *)
+let _co19_enc = alt_enc
+
+
+(** [alt_dec] *)
+let _co19_dec = alt_dec
+
+
+(** [alt_wfcv] *)
+let _co19_wfcv = alt_wfcv
+
+
+(** [alt_wfcv_prop] *)
+let _co19_wfcv_prop = alt_wfcv_prop
+
+
+(** [alt_rest_cond] *)
+let _co19_rest_cond = alt_rest_cond
+
+
+(** [alt_roundtrip] *)
+let _co19_roundtrip = alt_roundtrip
+
+
+(** [alt_dec_err_bound] *)
+let _co19_dec_err_bound = alt_dec_err_bound
+
+
+(** [alt_dec_consumed_bound] *)
+let _co19_dec_consumed_bound = alt_dec_consumed_bound
+
+
 (** [satisfy_many0] *)
-let _co19 = satisfy_many0
+let _co20 = satisfy_many0
 
 
 (** [satisfy_many1] *)
-let _co20 = satisfy_many1
+let _co21 = satisfy_many1
 
 
 (* ── Derived combinators (Data.Codec.fst) ── *)
@@ -1403,11 +1439,63 @@ let _rc0 = lemma_choice_c1_dominates
 (* one_of *)
 
 
+(** [one_of] *)
+let _ro_1 = one_of
+
+
+(** [one_of_enc] *)
+let _ro_2 = one_of_enc
+
+
+(** [one_of_dec] *)
+let _ro_3 = one_of_dec
+
+
+(** [one_of_mem] *)
+let _ro_4 = one_of_mem
+
+
 (** [lemma_one_of_bytes_mismatch] *)
 let _ro0 = lemma_one_of_bytes_mismatch
 
 
 (* is_prefix_of / scan_until / take_until *)
+
+
+(** [take_until] *)
+let _ri_0 = take_until
+
+
+(** [scan_until_split] *)
+let _ri_1 = scan_until_split
+
+
+(** [scan_until_content] *)
+let _ri_2 = scan_until_content
+
+
+(** [scan_until_rest] *)
+let _ri_3 = scan_until_rest
+
+
+(** [take_until_dec] *)
+let _ri_4 = take_until_dec
+
+
+(** [take_until_enc] *)
+let _ri_5 = take_until_enc
+
+
+(** [take_until_wfcv] *)
+let _ri_6 = take_until_wfcv
+
+
+(** [take_until_wfcv_prop] *)
+let _ri_7 = take_until_wfcv_prop
+
+
+(** [take_until_rest_cond] *)
+let _ri_8 = take_until_rest_cond
 
 
 (** [lemma_is_prefix_len] *)
