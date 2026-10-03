@@ -73,6 +73,41 @@ all verify; `TST_MODS` is populated.
 
 ## Current state (post Pulse port)
 
+### ✅ LANDED — `satisfy_many0`/`satisfy_many1` (Session A of variable-width roadmap)
+
+Added the variable-width predicate-run combinators (Combinators 21/22) to
+`Data.Codec.Types` with a generic symbolic-`f` roundtrip at 0-admit
+(`--z3rlimit ≤ 120`): `satisfy_run_scan`, `lemma_satisfy_run_scan_self`,
+`lemma_seq_to_list_head_is_index` (the `Seq.seq_to_list`-head ↔ `Seq.index 0`
+bridge), `lemma_satisfy_run_scan_seq_self`, `satisfy_many0`/`satisfy_many1`,
+plus facade `many0`/`many1` in `Data.Codec`.  Commits `f60083b` → `5f571a3`
+(renumber + place after `alt`) → `15e76a9` (review-finding fixes).  See
+[`openspec/changes/satisfy-many-run-combinator/`](openspec/changes/satisfy-many-run-combinator/)
+(Status: Session A ✅, Session B = `fstar-mime` rewire pending).
+
+### 🟡 QUEUED — `codec-layer-sort` (the `Data.Codec.Types` layering reorg)
+
+The current `Data.Codec.Types.fst` interleaves lemmas and non-lemma helpers in
+proof-dependency order.  The plan is to reorganize into **5 explicit layers**
+(core types → helpers → proof lemmas → combinators → expansion lemmas), each
+sorted, lemmas in topo+alphabetical order.  The *correct method* (worked out
+this session) is **incremental**: extract units by their balanced
+`#push-options`/`#pop-options` pairing, move layer-by-layer, and re-verify
+`make check` after every move (F* is the ordering oracle).  A single
+line-based auto-reorg was attempted and abandoned because a few defs have
+inconsistent doc-comment placement (`pow2` duplicate docs, `codec` as a
+`type` wrapped in `#push`/`#pop`).  See
+[`openspec/changes/codec-layer-sort/proposal.md`](openspec/changes/codec-layer-sort/proposal.md)
++ [`tasks.md`](openspec/changes/codec-layer-sort/tasks.md) — 0 tasks started.
+
+Key facts already established (do not re-derive):
+- 163 top-level defs; **no forward references** (valid topo order today).
+- 80 lemmas form a **23-edge lemma→lemma DAG** + edges to helpers ⇒ a single
+  alphabetical lemma block is NOT feasible.
+- Two lemma kinds: **65 proof lemmas** (used by combinators) vs **15 expansion
+  lemmas** (`lemma_{byte_val,digits_to_int,map_,product}_*_eq`, document a
+  combinator's fields, must come AFTER it).
+
 ### GREEN (verified this session, F* `v2026.09.20+lsp`)
 
 Full gate verified GREEN at 0-admit (`--z3rlimit 120`, current Makefile
