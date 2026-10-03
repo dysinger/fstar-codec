@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `satisfy_many0` / `satisfy_many1` — variable-width predicate-run combinators
+  in `Data.Codec.Types` (combinators 21/22), each `(byte -> Tot bool) ->
+  codec (list byte)`.  A generic (symbolic-`f`) roundtrip plus
+  `dec_err_bound`/`dec_consumed_bound`, proved 0-admit at `--z3rlimit ≤ 120`;
+  the run scan is a top-level `let rec` at the list level with the
+  `lemma_seq_to_list_of_list_append` §11 bridge.  Facade long-name aliases
+  `many0`/`many1` in `Data.Codec`.
+
 ### Changed
 
 - Renamed the C leaf `Data.Codec.Low` → `Data.Codec.Pulse` (the KaRaMeL `.Low`

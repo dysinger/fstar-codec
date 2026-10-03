@@ -918,3 +918,40 @@ let test_digit_byte_error () : Lemma
   (ensures digit_byte.dec (seq_of_list [0x47uy]) == Inl (mk_decode_error ExpectedPredicate 0))
   = ()
 #pop-options
+
+
+(** satisfy_many0/1 concrete roundtrips. *)
+#push-options "--z3rlimit 120"
+
+
+(** [test_satisfy_many0_empty] — zero-or-more run on empty input decodes [([], 0)]. *)
+let test_satisfy_many0_empty () : Lemma
+  (ensures (satisfy_many0 is_digit).dec Seq.empty == Inr ([], 0))
+  = ()
+
+
+(** [test_satisfy_many0_digits] — zero-or-more run of digit bytes stops at a
+    non-digit suffix and consumes only the run. *)
+let test_satisfy_many0_digits () : Lemma
+  (ensures (satisfy_many0 is_digit).dec (seq_of_list [0x31uy; 0x32uy; 0x41uy])
+    == Inr ([0x31uy; 0x32uy], 2))
+  = ()
+
+
+(** [test_satisfy_many1_digits_roundtrip] — one-or-more digit run roundtrips via
+    the generic [roundtrip] field (concrete [is_digit] predicate). *)
+let test_satisfy_many1_digits_roundtrip () : Lemma
+  (ensures (satisfy_many1 is_digit).dec
+    ((satisfy_many1 is_digit).enc [0x31uy; 0x32uy; 0x33uy] `Seq.append` Seq.empty)
+    == Inr ([0x31uy; 0x32uy; 0x33uy], 3))
+  = (satisfy_many1 is_digit).roundtrip [0x31uy; 0x32uy; 0x33uy] Seq.empty
+
+
+(** [test_satisfy_many1_alpha_roundtrip] — one-or-more alpha run roundtrips
+    against a non-alpha suffix (framing via [rest_cond]). *)
+let test_satisfy_many1_alpha_roundtrip () : Lemma
+  (ensures (satisfy_many1 is_alpha).dec
+    ((satisfy_many1 is_alpha).enc [0x41uy; 0x62uy] `Seq.append` seq_of_list [0x30uy])
+    == Inr ([0x41uy; 0x62uy], 2))
+  = (satisfy_many1 is_alpha).roundtrip [0x41uy; 0x62uy] (seq_of_list [0x30uy])
+#pop-options

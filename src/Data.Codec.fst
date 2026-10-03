@@ -4,7 +4,7 @@
 (**
 Data.Codec — Derived combinators, operator aliases, and character predicates.
 
-Re-exports every [Data.Codec.Types] symbol (all 20 combinators, plus
+Re-exports every [Data.Codec.Types] symbol (all 22 combinators, plus
 [one_of]/[take_until] helpers and every lemma) via [include].
 
 @header Data.Codec
@@ -129,6 +129,14 @@ let digits_to_integer = digits_to_int
 
 (** [digits_to_int_alias] — alias for [digits_to_int]. *)
 let digits_to_int_alias = digits_to_int
+
+
+(** [many0] — long-name alias for [satisfy_many0]. *)
+let many0 (f: byte -> Tot bool) : codec (list byte) = satisfy_many0 f
+
+
+(** [many1] — long-name alias for [satisfy_many1]. *)
+let many1 (f: byte -> Tot bool) : codec (list byte) = satisfy_many1 f
 
 
 (** Character predicates *)

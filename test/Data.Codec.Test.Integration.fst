@@ -530,8 +530,24 @@ let _ct119 = Data.Codec.Test.Roundtrip.test_drop_then_c2_fails
 let _ct120 = Data.Codec.Test.Roundtrip.test_take_truncated
 
 
+(** [test_satisfy_many0_empty] *)
+let _ct121 = Data.Codec.Test.Roundtrip.test_satisfy_many0_empty
+
+
+(** [test_satisfy_many0_digits] *)
+let _ct122 = Data.Codec.Test.Roundtrip.test_satisfy_many0_digits
+
+
+(** [test_satisfy_many1_digits_roundtrip] *)
+let _ct123 = Data.Codec.Test.Roundtrip.test_satisfy_many1_digits_roundtrip
+
+
+(** [test_satisfy_many1_alpha_roundtrip] *)
+let _ct124 = Data.Codec.Test.Roundtrip.test_satisfy_many1_alpha_roundtrip
+
+
 (* ── Anchor numbering note ──
-   Concrete tests: _ct0.._ct120 (121 anchors) cover roundtrip, error paths,
+   Concrete tests: _ct0.._ct124 (125 anchors) cover roundtrip, error paths,
    char predicates, and derived combinators.
    Pulse.fst encoders/decoders/dispatch: _pulse0.._pulse22 (with _pulse5a/5b,
    _pulse11a/11b, _pulse22a/22b sub-anchors).
@@ -1003,6 +1019,14 @@ let _co17 = count
 let _co18 = label
 
 
+(** [satisfy_many0] *)
+let _co19 = satisfy_many0
+
+
+(** [satisfy_many1] *)
+let _co20 = satisfy_many1
+
+
 (* ── Derived combinators (Data.Codec.fst) ── *)
 
 
@@ -1040,6 +1064,14 @@ let _dc7  = optional
 
 (** [take] *)
 let _dc8  = take
+
+
+(** [many0] *)
+let _dc11 = many0
+
+
+(** [many1] *)
+let _dc12 = many1
 
 
 (** [lemma_choice_c1_dominates] *)
@@ -1400,6 +1432,33 @@ let _ri4 = lemma_take_until_dec_err_bound
 
 (** [lemma_take_until_dec_consumed_bound] *)
 let _ri5 = lemma_take_until_dec_consumed_bound
+
+
+(* satisfy_run_scan / satisfy_many *)
+
+
+(** [satisfy_run_scan] *)
+let _ri6 = satisfy_run_scan
+
+
+(** [satisfy_run_dec] *)
+let _ri7 = satisfy_run_dec
+
+
+(** [lemma_satisfy_run_scan_self] *)
+let _ri8 = lemma_satisfy_run_scan_self
+
+
+(** [lemma_satisfy_run_scan_seq_self] *)
+let _ri9 = lemma_satisfy_run_scan_seq_self
+
+
+(** [lemma_satisfy_run_content_le_len] *)
+let _ri10 = lemma_satisfy_run_content_le_len
+
+
+(** [lemma_seq_to_list_head_is_index] *)
+let _ri11 = lemma_seq_to_list_head_is_index
 
 
 (* seq *)

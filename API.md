@@ -3,7 +3,7 @@
 Data.Codec.Types — Core types, record codec, helpers, lemmas, and combinators.
 This module defines the bidirectional codec framework: a [codec a] is a
 verified serializer/deserializer pair with roundtrip, error-bounds, and
-n-bounds proofs.  All 20 combinators are standalone functions
+n-bounds proofs.  All 22 combinators are standalone functions
 returning codec records — no GADT, no n, no mutual recursion.
 - [codec a] — 8-field record: enc, dec, wfcv, wfcv_prop, rest_cond,
 roundtrip, dec_err_bound, dec_consumed_bound
@@ -12,13 +12,14 @@ roundtrip, dec_err_bound, dec_consumed_bound
 - [decode_result a] — either an error or a value + bytes consumed
 Leaf: token, byte_val, satisfy, pure, text, bytes, uint8,
 word16be, word16le, word32be, word32le, varint, digits_to_int
-Combinator: custom, product, sum, map_, count, label
+Combinator: custom, product, sum, map_, count, label, alt,
+satisfy_many0, satisfy_many1
 All lemmas are called explicitly in roundtrip proofs.  SMTPat is used
 sparingly and only on pattern-matching decoders (bytes_decode,
 lemma_seq_cons_append).
 Every combinator carries its own roundtrip, dec_err_bound, and
 dec_consumed_bound proof.  Z3 rlimits are kept ≤ 120 via structural
-decomposition.  Zero admits across all 20 combinators.
+decomposition.  Zero admits across all 22 combinators.
 
 ---
 
@@ -481,6 +482,28 @@ is set to [Some s].  All other fields delegate to [c].
 
 ---
 
+Combinator 21: satisfy_many0 — a zero-or-more run of bytes matching a predicate.
+Decodes the maximal leading run of bytes satisfying [f] (stops at the first
+rejected byte or end-of-input), returning the run as a [list byte].
+The symbolic roundtrip holds under [wfcv xs == for_all f xs] and the framing
+[rest_cond], [Seq.length r = 0 \/ not (f (Seq.index r 0))].  Alias: [many0].
+
+| Parameter | Description |
+|-----------|-------------|
+| `f` | Predicate each run byte must satisfy. |
+
+---
+
+Combinator 22: satisfy_many1 — a one-or-more run of bytes matching a predicate.
+Like [satisfy_many0] but requires a non-empty run ([wfcv] adds [Cons? xs]).
+Alias: [many1].
+
+| Parameter | Description |
+|-----------|-------------|
+| `f` | Predicate each run byte must satisfy. |
+
+---
+
 # Data.Codec.Pulse
 
 Data.Codec.Pulse — C-extractable codec layer via Pulse + Custard.
@@ -521,15 +544,16 @@ spec + OCaml extraction); only the buffer read/write boundary converts to
 # Data.Codec
 
 Data.Codec — Derived combinators, operator aliases, and character predicates.
-Re-exports every [Data.Codec.Types] symbol (all 20 combinators, plus
+Re-exports every [Data.Codec.Types] symbol (all 22 combinators, plus
 [one_of]/[take_until] helpers and every lemma) via [include].
 Adds derived combinators built from the base set, backward-compat aliases,
 byte and character classification predicates.
-- 20 combinators: token, byte_val, satisfy, pure, text, bytes,
+- 22 combinators: token, byte_val, satisfy, pure, text, bytes,
 uint8, word16be, word16le, word32be, word32le, varint, digits_to_int,
-custom, product, sum, map_, count, label, alt
+custom, product, sum, map_, count, label, alt, satisfy_many0, satisfy_many1
 - Ad-hoc helpers (not codecs): one_of, take_until (return triples)
-- Derived combinators: choice, then_drop, drop_then, between, optional, take
+- Derived combinators: choice, then_drop, drop_then, between, optional, take,
+many0, many1
 - Operator aliases: ( *> ), ( <* ), ( <|> )
 - Character predicates: is_digit, is_upper, is_lower, is_alpha, is_alphanum,
 is_space_or_tab, is_whitespace, is_printable (byte + char variants)
