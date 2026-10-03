@@ -1066,20 +1066,20 @@ let _dc7  = optional
 let _dc8  = take
 
 
-(** [many0] *)
-let _dc11 = many0
-
-
-(** [many1] *)
-let _dc12 = many1
-
-
 (** [lemma_choice_c1_dominates] *)
 let _dc9  = lemma_choice_c1_dominates
 
 
 (** [lemma_choice_c2_dominates] *)
 let _dc10 = lemma_choice_c2_dominates
+
+
+(** [many0] *)
+let _dc11 = many0
+
+
+(** [many1] *)
+let _dc12 = many1
 
 
 (* ── Backward-compat aliases ── *)

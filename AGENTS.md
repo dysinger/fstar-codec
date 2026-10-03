@@ -238,9 +238,9 @@ findings) is **DONE this session** — see
 (and its "Resolution log"), which now records every finding as checked off
 with a written resolution.  Summary of what landed:
 
-- **Counts reconciled to mechanically-verifiable values:** 20 combinators
+- **Counts reconciled to mechanically-verifiable values:** 22 combinators
   (the `codec a`-returning constructors) + 2 ad-hoc helpers (`one_of`,
-  `take_until`, which return triples); **121 tests** = 111 pure `test_*` in
+  `take_until`, which return triples); **125 tests** = 115 pure `test_*` in
   `Data.Codec.Test.Roundtrip` + 10 `fn test_stack_*` in `Data.Codec.Test.Pulse`.
 - **README combinator/operator list** rewritten to enumerate only the real 20
   constructors + `*>`, `<*`, `<|>` (the fictional `byte`/`u16`/`u32`/`seq`/

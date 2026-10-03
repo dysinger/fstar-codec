@@ -17,7 +17,7 @@
 #   - `native`  — C11 shared/static lib of the Pulse leaf (`Data.Codec.Pulse`,
 #                 `--custard_backend C`).
 #
-# Returns { checked; ocaml; native; }.
+# Returns { checked; ocaml; native; fsharp; }.
 
 {
   fstar,

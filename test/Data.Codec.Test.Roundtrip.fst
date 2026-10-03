@@ -15,7 +15,7 @@ roundtrip tests live in [Data.Codec.Test.Pulse].
   2097151, 2097152, 268435455, 268435456, max)
 - Boundary values for word16 (0, 255, 256, 65535)
 - Boundary values for word32 (0, max)
-- All 20 combinators: roundtrip + error paths
+- All 22 combinators: roundtrip + error paths
 - Derived combinators: choice, then_drop, drop_then, between, optional, take
 - Character predicates (byte + char, positive + negative)
 - Varint overflow and truncation at every byte boundary

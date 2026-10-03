@@ -6,7 +6,7 @@ Data.Codec.Types — Core types, record codec, helpers, lemmas, and combinators.
 
 This module defines the bidirectional codec framework: a [codec a] is a
 verified serializer/deserializer pair with roundtrip, error-bounds, and
-n-bounds proofs.  All 20 combinators are standalone functions
+n-bounds proofs.  All 22 combinators are standalone functions
 returning codec records — no GADT, no n, no mutual recursion.
 
 @header Data.Codec.Types
@@ -2591,9 +2591,6 @@ let satisfy_many1 (f: byte -> Tot bool) : codec (list byte) = {
 }
 #pop-options
 
-
-
-(** Helper A: one_of — terminated-literal choice *)
 
 
 (** Mismatch helper for [one_of]: [x] and [y] differ within [min |x| |y|]

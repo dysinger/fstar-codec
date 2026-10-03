@@ -116,7 +116,7 @@ lemmas) that compiles to C11, OCaml, and F#.
 ## Architecture
 
 ```
-Data.Codec.Types     — codec record, 20 combinators, all lemmas
+Data.Codec.Types     — codec record, 22 combinators, all lemmas
 Data.Codec           — derived combinators, operator aliases, char predicates
 Data.Codec.Pulse     — C-extractable leaf codecs (Pulse fn, C/OCaml/F# output)
 ```
