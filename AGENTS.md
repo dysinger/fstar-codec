@@ -36,8 +36,7 @@ resumes cleanly (the Pulse port itself is complete — see "Definition of done")
 
 ## ✅ RESOLVED: `Data.Codec.Pulse` verification hang (FIXED two sessions ago)
 
-> **Canonical record**: [`openspec/changes/diagnose-pulse-hang/tasks.md`](openspec/changes/diagnose-pulse-hang/tasks.md)
-> (and [`proposal.md`](openspec/changes/diagnose-pulse-hang/proposal.md)).
+> **Canonical record**: the `diagnose-pulse-hang` change notes (uncommitted working notes under `openspec/`, which is never committed).
 >
 > ### FIXED — `Data.Codec.Pulse` verify was a varint-roundtrip SMT hang
 
@@ -81,9 +80,9 @@ Added the variable-width predicate-run combinators (Combinators 21/22) to
 `lemma_seq_to_list_head_is_index` (the `Seq.seq_to_list`-head ↔ `Seq.index 0`
 bridge), `lemma_satisfy_run_scan_seq_self`, `satisfy_many0`/`satisfy_many1`,
 plus facade `many0`/`many1` in `Data.Codec`.  Commits `f60083b` → `5f571a3`
-(renumber + place after `alt`) → `15e76a9` (review-finding fixes).  See
-[`openspec/changes/satisfy-many-run-combinator/`](openspec/changes/satisfy-many-run-combinator/)
-(Status: Session A ✅, Session B = `fstar-mime` rewire pending).
+(renumber + place after `alt`) → `15e76a9` (review-finding fixes).  See the
+`satisfy-many-run-combinator` change notes (uncommitted working notes) —
+Status: Session A ✅, Session B = `fstar-mime` rewire pending.
 
 ### 🟡 QUEUED — `codec-layer-sort` (the `Data.Codec.Types` layering reorg)
 
@@ -96,9 +95,8 @@ this session) is **incremental**: extract units by their balanced
 `make check` after every move (F* is the ordering oracle).  A single
 line-based auto-reorg was attempted and abandoned because a few defs have
 inconsistent doc-comment placement (`pow2` duplicate docs, `codec` as a
-`type` wrapped in `#push`/`#pop`).  See
-[`openspec/changes/codec-layer-sort/proposal.md`](openspec/changes/codec-layer-sort/proposal.md)
-+ [`tasks.md`](openspec/changes/codec-layer-sort/tasks.md) — 0 tasks started.
+`type` wrapped in `#push`/`#pop`).  See the `codec-layer-sort` change notes
+(uncommitted working notes) — 0 tasks started.
 
 Key facts already established (do not re-derive):
 - 163 top-level defs; **no forward references** (valid topo order today).
@@ -147,7 +145,7 @@ full gate — 3 src + 3 test modules — verifies GREEN at 0-admit).  Two notes:
   dead: they anchor `varint_encode_pred` / `varint_decode_expected` /
   `lemma_varint_roundtrip_smtpat`.
 
-See [`openspec/changes/low-pulse-port/tasks.md`](openspec/changes/low-pulse-port/tasks.md)
+See the `low-pulse-port` change notes (uncommitted working notes)
 T3.2/T3.3 for the full detail.
 
 ## The old KaRaMeL/Low\* layer is DEAD (and the leaf is now PORTED)
@@ -217,8 +215,8 @@ Custard's `--custard_backend` enum is exactly `["OCaml"; "FSharp"; "KrmlC";
 
 ## Pulse idiom (pinned by the spike, applied to the leaf)
 
-`spike/Data.Codec.Spike.fst` (gitignored) was the Phase-1 spike; the exact
-idiom is now applied in `src/Data.Codec.Pulse.fst`.  Key facts:
+The Phase-1 spike (a throwaway, gitignored `spike/` module) established the
+exact idiom now applied in `src/Data.Codec.Pulse.fst`.  Key facts:
 
 - **Buffer type**: `A.array U8.t` (`Pulse.Lib.Array`), view `A.pts_to b s`
   (`s : Seq.seq U8.t` erased).  Read `b.(j)`, write `b.(j) <- x` with `j :
@@ -269,7 +267,7 @@ idiom is now applied in `src/Data.Codec.Pulse.fst`.  Key facts:
 The **port to F\* `v2026.09.20` is functionally complete** and the build gate
 is GREEN at 0-admit.  The subsequent **reviewer-findings** cleanup (all C/M/W/S
 findings) is **DONE this session** — see
-[`openspec/changes/reviewer-findings/tasks.md`](openspec/changes/reviewer-findings/tasks.md)
+the `reviewer-findings` change notes (uncommitted working notes)
 (and its "Resolution log"), which now records every finding as checked off
 with a written resolution.  Summary of what landed:
 
@@ -308,7 +306,7 @@ hand-maintained `varint_decode_expected`/`decode_varint` spec/impl pair) are
 > there is **no remaining in-repo openspec work** (all 8 changes are LANDED).
 > A second adversarial review (this session) found residual prose drift + false
 > "done" claims; those are now **all resolved** in
-> [`openspec/changes/review-followup-2/tasks.md`](openspec/changes/review-followup-2/tasks.md)
+> the `review-followup-2` change notes (uncommitted working notes)
 > (STATUS: LANDED, 15/15 boxes done): varint-fsdoc contradiction (C1),
 > stale `_pulseL*` anchor claim + numbering comment (C2/C3), `*<`→`<*` typo,
 > rlimit 80-vs-120 drift, `CHANGELOG` "19+", M4 167-vs-168, S5 detritus actually
