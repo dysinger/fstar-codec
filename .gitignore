@@ -24,3 +24,9 @@ runtime/
 
 # SMT query dumps from `fstar.exe --log_queries` (hang diagnosis)
 queries-*.smt2
+
+# Agent handoff notes — NOT committed (local session notes only)
+AGENTS.md
+
+# OpenSpec planning artifacts — NOT committed
+openspec/
