@@ -4,7 +4,7 @@
 (**
 Data.Codec.Test.Roundtrip — Concrete roundtrip and error-path tests.
 
-115 concrete tests with ZERO admits.  Each test calls encode, decode,
+118 concrete tests with ZERO admits.  Each test calls encode, decode,
 and asserts the expected result.  Uses pure combinators only; the buffer
 roundtrip tests live in [Data.Codec.Test.Pulse].
 
@@ -911,6 +911,25 @@ let test_char_is_printable () : Lemma (ensures char_is_printable '~' == true) = 
 
 (** [test_char_is_printable_false] — char_is_printable '\x1F' is false. *)
 let test_char_is_printable_false () : Lemma (ensures char_is_printable '\x1F' == false) = ()
+
+
+(** [test_char_is_digit_non_ascii] — a non-ASCII char (U+0130, 304; 304 % 256
+    = 48 = '0') is NOT a digit: the [char_to_byte] 0xFF guard prevents the
+    %-256 wrap false-positive that would otherwise classify it as '0'. *)
+let test_char_is_digit_non_ascii () : Lemma
+  (ensures char_is_digit '\u0130' == false) = ()
+
+
+(** [test_char_is_upper_non_ascii] — a non-ASCII char whose low byte is 'A'
+    (U+0141, 321; 321 % 256 = 65 = 'A') is NOT uppercase. *)
+let test_char_is_upper_non_ascii () : Lemma
+  (ensures char_is_upper '\u0141' == false) = ()
+
+
+(** [test_char_is_lower_non_ascii] — a non-ASCII char whose low byte is 'a'
+    (U+0161, 353; 353 % 256 = 97 = 'a') is NOT lowercase. *)
+let test_char_is_lower_non_ascii () : Lemma
+  (ensures char_is_lower '\u0161' == false) = ()
 
 
 (** digit_byte error: non-digit byte → ExpectedPredicate. *)

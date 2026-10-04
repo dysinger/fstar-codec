@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Data.Codec.Pulse` — C-extractable Pulse leaf codecs (8 types), buffer
     I/O, and roundtrip lemmas.
 - Three test modules:
-  - `Data.Codec.Test.Roundtrip` — 115 pure roundtrip/error-path tests.
+  - `Data.Codec.Test.Roundtrip` — 118 pure roundtrip/error-path tests.
   - `Data.Codec.Test.Pulse` — 10 buffer-based Pulse roundtrip/error tests.
   - `Data.Codec.Test.Integration` — binds every lemma/test, enforcing coverage.
 - Nix flake targets: `.#checked`, `.#ocaml`, `.#native`, `.#fsharp`.

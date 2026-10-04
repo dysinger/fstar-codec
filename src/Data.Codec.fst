@@ -127,10 +127,6 @@ let equiv_map = map_
 let digits_to_integer = digits_to_int
 
 
-(** [digits_to_int_alias] — alias for [digits_to_int]. *)
-let digits_to_int_alias = digits_to_int
-
-
 (** [many0] — long-name alias for [satisfy_many0]. *)
 let many0 (f: byte -> Tot bool) : codec (list byte) = satisfy_many0 f
 
@@ -175,9 +171,31 @@ let is_printable (b: byte) : bool =
   let v = U8.v b in 0x20 <= v && v <= 0x7E
 
 
-(** [char_to_byte] — truncate a [char] to its low 8 bits. *)
+(** [char_to_byte] — map an ASCII [char] to its byte; a non-ASCII [char]
+    ([int_of_char c >= 128]) maps to [0xFF] (which no ASCII predicate below
+    matches), so a non-ASCII char is never silently accepted as a digit/
+    letter/etc.  (Previously the body was [int_of_char c % 256], which silently
+    wrapped code points [>= 256] into ASCII and produced false positives in
+    [char_is_digit]/[char_is_upper]/… — see [lemma_non_ascii_char_byte].) *)
 let char_to_byte (c: FStar.Char.char) : byte =
-  U8.uint_to_t (FStar.Char.int_of_char c % 256)
+  let i = FStar.Char.int_of_char c in
+  if i < 128 then U8.uint_to_t i else 0xFFuy
+
+
+(** [lemma_non_ascii_char_byte] — a non-ASCII char maps to [0xFF], never an
+    ASCII predicate byte. *)
+let lemma_non_ascii_char_byte (c: FStar.Char.char)
+  : Lemma (requires FStar.Char.int_of_char c >= 128)
+          (ensures char_to_byte c == 0xFFuy)
+  = ()
+
+
+(** [lemma_ascii_char_byte_exact] — an ASCII char maps exactly (identity, no
+    truncation), so [char_is_*] are exact for ASCII. *)
+let lemma_ascii_char_byte_exact (c: FStar.Char.char)
+  : Lemma (requires FStar.Char.int_of_char c < 128)
+          (ensures char_to_byte c == U8.uint_to_t (FStar.Char.int_of_char c))
+  = ()
 
 
 (** [char_is_digit] — is the character a digit? *)

@@ -498,6 +498,18 @@ let _ct111 = Data.Codec.Test.Roundtrip.test_char_is_printable
 let _ct112 = Data.Codec.Test.Roundtrip.test_char_is_printable_false
 
 
+(** [test_char_is_digit_non_ascii] *)
+let _ct112a = Data.Codec.Test.Roundtrip.test_char_is_digit_non_ascii
+
+
+(** [test_char_is_upper_non_ascii] *)
+let _ct112b = Data.Codec.Test.Roundtrip.test_char_is_upper_non_ascii
+
+
+(** [test_char_is_lower_non_ascii] *)
+let _ct112c = Data.Codec.Test.Roundtrip.test_char_is_lower_non_ascii
+
+
 (** [test_digit_byte_error] *)
 let _ct113 = Data.Codec.Test.Roundtrip.test_digit_byte_error
 
@@ -559,7 +571,11 @@ let _ct124 = Data.Codec.Test.Roundtrip.test_satisfy_many1_alpha_roundtrip
    ── *)
 
 
-(* ── Gap anchors — prevent accidental reuse of deleted anchor names ── *)
+(* ── Gap anchors — prevent accidental reuse of deleted anchor names ──
+   These are NOT coverage gaps: alt/one_of/take_until (the formerly-uncovered
+   set) are anchored as _co19/_co20/_co21 + value constructors and helpers.
+   _pulse15_gap/_pulse16_gap exist only to reserve the retired names so a
+   future anchor cannot silently reuse them. ── *)
 
 
 (** [_pulse15_gap] *)
@@ -1149,10 +1165,6 @@ let _ba5 = map
 let _ba6 = equiv_map
 
 
-(** [digits_to_int_alias] *)
-let _ba7 = digits_to_int_alias
-
-
 (** [digits_to_integer] *)
 let _ba8 = digits_to_integer
 
@@ -1166,6 +1178,14 @@ let _cp0 = is_upper
 
 (** [char_to_byte] *)
 let _cp0b = char_to_byte           (* extracted helper *)
+
+
+(** [lemma_non_ascii_char_byte] *)
+let _cp0c = lemma_non_ascii_char_byte
+
+
+(** [lemma_ascii_char_byte_exact] *)
+let _cp0d = lemma_ascii_char_byte_exact
 
 
 (** [is_lower] *)

@@ -63,7 +63,7 @@ compile to C for use at the byte-buffer level.
   semantically-neutral `--admit_smt_queries true` — see `AGENTS.md`).
 - **C extraction.**  The Pulse leaf codecs extract to C with byte-level
   post-conditions.
-- **A real test suite.**  115 pure roundtrip/error-path tests plus 10 Pulse
+- **A real test suite.**  118 pure roundtrip/error-path tests plus 10 Pulse
   buffer tests, all verified.
 
 ## Modules

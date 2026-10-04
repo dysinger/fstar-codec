@@ -19,7 +19,12 @@ sparingly and only on pattern-matching decoders (bytes_decode,
 lemma_seq_cons_append).
 Every combinator carries its own roundtrip, dec_err_bound, and
 dec_consumed_bound proof.  Z3 rlimits are kept ≤ 120 via structural
-decomposition.  Zero admits across all 22 combinators.
+decomposition, with three documented exceptions: the
+[lemma_seq_to_list_of_list_append] bridge and the two
+[take_until] error/consumed-bound lemmas ([lemma_take_until_dec_err_bound],
+[lemma_take_until_dec_consumed_bound]) each need a higher scoped rlimit
+(2000 / 400) — see the inline comments at [Data.Codec.Types].  Zero admits
+across all 22 combinators.
 
 ---
 

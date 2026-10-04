@@ -2278,9 +2278,6 @@ let label (#a:Type) (s: string) (c: codec a) : codec a = {
 #pop-options
 
 
-(** 20. alt *)
-
-
 (** Combinator 20: alt — content-based alternation on a first-byte predicate.
 
     Unlike [sum] (which prepends a 0x00/0x01 discriminator byte), [alt]
@@ -2959,6 +2956,8 @@ let lemma_scan_until_found_bound (delim: list byte) (bs: list byte) : Lemma
 
 
 (** Error-position bound for [take_until_dec]. *)
+(** rlimit 400: the bound chains [scan_until] length monotonicity through
+    [take_until_dec]'s [Inl] branch, which the default 120 does not close.) *)
 #push-options "--z3rlimit 400"
 let lemma_take_until_dec_err_bound (delim: list byte)
   (content_ok: list byte -> Tot bool) (max: nat) (s: byte_seq) : Lemma
@@ -2973,6 +2972,8 @@ let lemma_take_until_dec_err_bound (delim: list byte)
 
 
 (** Consumed-count bound for [take_until_dec]. *)
+(** rlimit 400: same as [lemma_take_until_dec_err_bound] — the [Inr] branch
+    chains [scan_until] length monotonicity past the default 120. *)
 #push-options "--z3rlimit 400"
 let lemma_take_until_dec_consumed_bound (delim: list byte)
   (content_ok: list byte -> Tot bool) (max: nat) (s: byte_seq) : Lemma

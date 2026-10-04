@@ -81,7 +81,18 @@ type decode_error_c = { code: error_code_c; pos: U32.t }
 type decode_result_ok = { n: U32.t; value: U32.t }
 
 
-(** C-compatible decode result: either error or success. *)
+(** C-compatible decode result: either error or success.
+
+    The [value] field is a single boxed [U32.t] even though the pure layer
+    ([Data.Codec.Types.decode_result a]) is polymorphic in [a].  This is
+    DELIBERATE: the Pulse/Custard leaf must realize a uniform value type in
+    C, which has no sum types — every scalar leaf (byte, uint8, word16be/le,
+    word32be/le, varint) decodes into the same [U32.t] slot, and [DR_Inl]/
+    [DR_Inr] are the discriminated-union tags.  The [DR_] prefix on the
+    constructors avoids collision with the stdlib [either]'s [Inl]/[Inr];
+    0xFF byte values are carried by widening a [U8] to [U32] at the boundary
+    (see [uint8_to_uint32]).  Do NOT refactor this to an [either]-based
+    polymorphic sum — doing so breaks [.#fsharp]/[.#native] extraction. *)
 type decode_result_c =
   | DR_Inl of decode_error_c
   | DR_Inr of decode_result_ok
