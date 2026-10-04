@@ -22,8 +22,8 @@ returning codec records — no GADT, no n, no mutual recursion.
 Leaf: token, byte_val, satisfy, pure, text, bytes, uint8,
        word16be, word16le, word32be, word32le, varint, digits_to_int
 Combinator: custom, product, sum, map_, count, label, alt,
-            satisfy_many0, satisfy_many1
-Helpers (not codecs): one_of, take_until (return ad-hoc triples)
+            satisfy_many0, satisfy_many1, take_until
+Helpers (not codecs): one_of (returns an ad-hoc triple)
 
 @section Lemmas
 All lemmas are called explicitly in roundtrip proofs.  SMTPat is used
@@ -33,10 +33,10 @@ lemma_seq_cons_append).
 @section Proofs
 Every combinator carries its own roundtrip, dec_err_bound, and
 dec_consumed_bound proof.  Z3 rlimits are kept ≤ 120 via structural
-decomposition.  Zero admits across all 22 combinators.  The [one_of] and
-[take_until] helpers return ad-hoc (enc, dec, wfcv) triples, not [codec]
-records; their roundtrips are proven per-instantiation (concrete literal /
-delimiter sets) rather than as a generic [codec] field — see their NOTEs.
+decomposition.  Zero admits across all 23 combinators.  The [one_of] helper
+returns an ad-hoc (enc, dec, wfcv) triple (its roundtrip is proven
+per-instantiation for a concrete literal set); [take_until] is a genuine
+[codec (list byte)] with a generic 0-admit roundtrip — see their NOTEs.
 *)
 module Data.Codec.Types
 
@@ -2822,9 +2822,9 @@ let lemma_byte_val_rest_cond_eq (b: byte) (r: byte_seq) : Lemma
                       rejects [--]).  Applied to the scanned content and
                       carried by [wfcv].
     @param max The maximum content length.
-    NOT a full [codec] (roundtrip is per-instantiation; see the NOTE).
-    Use the encoder/decoder/wfcv helpers plus a per-delimiter roundtrip
-    lemma at the call site to build the [custom] roundtrip. *)
+    A genuine [codec (list byte)] whose [wfcv] requires the content to be
+    delimiter-overlap-free (see [no_overlap_delim]); the generic roundtrip
+    is proven in this module (0-admit). *)
 
 
 (** [is_prefix_of] — is [p] a prefix of [l]? *)
@@ -2845,6 +2845,53 @@ let rec lemma_is_prefix_len (#a:eqtype) (p l: list a) : Lemma
     | ph :: pt, lh :: lt ->
         if ph = lh then lemma_is_prefix_len pt lt
         else ()
+
+
+(** Lemma: if [l] is long enough (≥ |p|), appending [m] does not change
+    whether [p] is a prefix.  [is_prefix_of p (l @ m) == is_prefix_of p l]. *)
+let rec lemma_is_prefix_of_app_ignores_tail (#a:eqtype) (p l m: list a) : Lemma
+  (requires List.Tot.length l >= List.Tot.length p)
+  (ensures is_prefix_of p (l @ m) == is_prefix_of p l)
+  (decreases p)
+  = match p with
+    | [] -> ()
+    | ph :: pt ->
+        (match l with
+         | lh :: lt -> lemma_is_prefix_of_app_ignores_tail pt lt m)
+
+
+(** Lemma: [p] is a prefix of [p @ m] (append at the end cannot hide [p]). *)
+let rec lemma_is_prefix_of_self_append (#a:eqtype) (p m: list a) : Lemma
+  (ensures is_prefix_of p (p @ m))
+  (decreases p)
+  = match p with
+    | [] -> ()
+    | ph :: pt -> lemma_is_prefix_of_self_append pt m
+
+
+(** [no_overlap_delim delim content] — the delimiter-overlap-free condition
+    required for [take_until]'s [wfcv] and thus its generic roundtrip.
+
+    Holds iff NO non-empty suffix [s] of [content] satisfies
+    [is_prefix_of delim (s @ delim)].  This rules out both (a) the delimiter
+    occurring as a substring of [content], and (b) a trailing border of
+    [content] that would combine with the appended delimiter to form a
+    premature [delim] match (the self-overlap case, e.g. [delim = [A;B;A]]
+    with [content] ending in [[A;B]]).
+
+    It is exactly the condition [scan_until_split delim (content @ delim @ r)]
+    needs to stop at the boundary rather than early. *)
+let rec no_overlap_delim (delim: list byte) (content: list byte) : Tot bool (decreases content) =
+  match content with
+  | [] -> true
+  | _ :: tl -> no_overlap_delim delim tl && not (is_prefix_of delim (content @ delim))
+
+
+(** Lemma: unfold [no_overlap_delim] on a cons cell. *)
+let lemma_no_overlap_cons (delim: list byte) (b: byte) (tl: list byte) : Lemma
+  (ensures no_overlap_delim delim (b::tl) ==
+           (no_overlap_delim delim tl && not (is_prefix_of delim ((b::tl) @ delim))))
+  = ()
 
 
 (** Scan the content up to (not including) the first occurrence of [delim].
@@ -2871,6 +2918,55 @@ let scan_until_rest (delim: list byte) (bs: list byte) : Tot (list byte) =
   snd (scan_until_split delim bs)
 
 
+(** Lemma: [scan_until_split] stops immediately when the head is already a
+    [delim] prefix. *)
+let lemma_scan_prefix (delim: list byte) (bs: list byte) : Lemma
+  (requires is_prefix_of delim bs)
+  (ensures scan_until_split delim bs == ([], bs))
+  = ()
+
+
+(** Lemma: [scan_until_split] on a cons whose head is NOT a [delim] prefix
+    reduces to consing the head onto the recursive scan of the tail. *)
+let lemma_scan_cons_no_prefix (delim: list byte) (b: byte) (tl: list byte) : Lemma
+  (requires not (is_prefix_of delim (b :: tl)))
+  (ensures scan_until_split delim (b :: tl) ==
+           (b :: fst (scan_until_split delim tl), snd (scan_until_split delim tl)))
+  = ()
+
+
+(** The generic delimiter scan exactness lemma — THE 2D-induction result
+    (§60 wall cracked).  When [content] is overlap-free ([no_overlap_delim]),
+    scanning [content @ delim @ rest] stops exactly at the delimiter, yielding
+    [(content, delim @ rest)].
+
+    Induction on [content]; the step chains [lemma_no_overlap_cons] (the
+    head is not a delimiter prefix), [List.Tot.append_assoc] (re-associate
+    the appended suffix), and [lemma_is_prefix_of_app_ignores_tail] (the
+    trailing [rest] cannot turn a non-prefix into a prefix). *)
+#push-options "--z3rlimit 400 --fuel 8 --ifuel 8"
+let rec lemma_scan_until_split_general (delim: list byte) (content: list byte) (rest: list byte) : Lemma
+  (requires no_overlap_delim delim content)
+  (ensures scan_until_split delim (content @ (delim @ rest)) == (content, delim @ rest))
+  (decreases content)
+  = match content with
+    | [] ->
+        lemma_is_prefix_of_self_append delim rest;
+        lemma_scan_prefix delim (delim @ rest);
+        ()
+    | b :: tl ->
+        lemma_scan_until_split_general delim tl rest;
+        lemma_no_overlap_cons delim b tl;
+        assert (no_overlap_delim delim (b::tl));
+        assert (not (is_prefix_of delim ((b::tl) @ delim)));
+        List.Tot.append_assoc (b::tl) delim rest;
+        lemma_is_prefix_of_app_ignores_tail delim ((b::tl) @ delim) rest;
+        assert (is_prefix_of delim ((b::tl) @ (delim @ rest)) == false);
+        lemma_scan_cons_no_prefix delim b (tl @ (delim @ rest));
+        ()
+#pop-options
+
+
 (** [take_until] decoder: [Seq.seq_to_list] at the boundary, then the list-level
     scan, then [content_ok] + length validation.  Rejects when the delimiter
     is absent, the content violates [content_ok], or it exceeds [max]. *)
@@ -2890,10 +2986,11 @@ let take_until_enc (delim: list byte) (content: list byte) : Tot byte_seq =
   seq_of_list (content @ delim)
 
 
-(** [take_until] well-formedness guard: the content obeys [content_ok]
-    and is within [max]. *)
-let take_until_wfcv (content_ok: list byte -> Tot bool) (max: nat) (content: list byte) : bool =
-  List.Tot.length content <= max && content_ok content
+(** [take_until] well-formedness guard: the content obeys [content_ok],
+    is within [max], and is delimiter-overlap-free ([no_overlap_delim delim]).
+    The overlap-freedom is what makes the generic roundtrip hold. *)
+let take_until_wfcv (delim: list byte) (content_ok: list byte -> Tot bool) (max: nat) (content: list byte) : bool =
+  List.Tot.length content <= max && content_ok content && no_overlap_delim delim content
 
 
 (** [take_until] well-formed proposition — [True]; the boolean [wfcv] carries
@@ -2901,19 +2998,32 @@ let take_until_wfcv (content_ok: list byte -> Tot bool) (max: nat) (content: lis
 let take_until_wfcv_prop (content: list byte) : prop = True
 
 
-(** [take_until] suffix condition: the content is valid and the suffix starts
-    with the delimiter (the close marker follows the content). *)
-let take_until_rest_cond (delim: list byte) (content_ok: list byte -> Tot bool)
-  (max: nat) (content: list byte) (r: byte_seq) : prop =
-  take_until_wfcv content_ok max content /\
-  is_prefix_of delim (Seq.seq_to_list r)
+(** [take_until] suffix condition — [True].  The delimiter is part of the
+    encoding ([content @ delim]); the trailing suffix [r] is unconstrained. *)
+let take_until_rest_cond (content: list byte) (r: byte_seq) : prop = True
 
 
-(** [take_until] helpers tuple (encoder, decoder, wfcv-guard).
-    Mirrors [one_of]; the roundtrip is proven per-instantiation. *)
-let take_until (delim: list byte) (content_ok: list byte -> Tot bool) (max: nat)
-  : ((list byte -> Tot byte_seq) & (byte_seq -> Tot (decode_result (list byte))) & (list byte -> Tot bool))
-  = (take_until_enc delim, take_until_dec delim content_ok max, take_until_wfcv content_ok max)
+(** The generic [take_until] roundtrip — 0-admit (the §60 2D induction, now
+    cracked via [no_overlap_delim] + [lemma_scan_until_split_general]). *)
+#push-options "--z3rlimit 400 --fuel 8 --ifuel 8"
+let take_until_roundtrip (delim: list byte) (content_ok: list byte -> Tot bool) (max: nat)
+  (content: list byte) (r: byte_seq) : Lemma
+  (requires take_until_wfcv delim content_ok max content)
+  (ensures take_until_dec delim content_ok max (take_until_enc delim content `Seq.append` r)
+           == Inr (content, List.Tot.length content + List.Tot.length delim))
+  =
+  lemma_seq_to_list_of_list_append (content @ delim) r;
+  assert (Seq.seq_to_list (seq_of_list (content @ delim) `Seq.append` r) == (content @ delim) @ Seq.seq_to_list r);
+  List.Tot.append_assoc content delim (Seq.seq_to_list r);
+  assert ((content @ delim) @ Seq.seq_to_list r == content @ (delim @ Seq.seq_to_list r));
+  assert (take_until_wfcv delim content_ok max content);
+  assert (no_overlap_delim delim content);
+  lemma_scan_until_split_general delim content (Seq.seq_to_list r);
+  assert (scan_until_split delim (content @ (delim @ Seq.seq_to_list r)) == (content, delim @ Seq.seq_to_list r));
+  lemma_is_prefix_of_self_append delim (Seq.seq_to_list r);
+  lemma_seq_of_list_length (content @ delim);
+  ()
+#pop-options
 
 
 (** The content scan consumes at most [|bs|] bytes. *)
@@ -2987,22 +3097,39 @@ let lemma_take_until_dec_consumed_bound (delim: list byte)
 #pop-options
 
 
+(** [take_until] — delimiter-terminated content run, as a genuine [codec
+    (list byte)].  Encodes [content @ delim]; decodes by scanning up to the
+    first [delim].  [wfcv] requires [content_ok], [|content| ≤ max], and
+    [no_overlap_delim delim content] (which makes the roundtrip hold). *)
+let take_until (delim: list byte) (content_ok: list byte -> Tot bool) (max: nat)
+  : codec (list byte)
+  = {
+    enc       = take_until_enc delim;
+    dec       = take_until_dec delim content_ok max;
+    wfcv      = take_until_wfcv delim content_ok max;
+    wfcv_prop = take_until_wfcv_prop;
+    rest_cond = take_until_rest_cond;
+    roundtrip = (fun v r ->
+      take_until_roundtrip delim content_ok max v r;
+      ());
+    dec_err_bound = (fun s -> lemma_take_until_dec_err_bound delim content_ok max s);
+    dec_consumed_bound = (fun s -> lemma_take_until_dec_consumed_bound delim content_ok max s);
+  }
+
+
 (** NOTE on [take_until] roundtrip scope.
 
-    The generic per-content roundtrip
-    [take_until_dec delim content_ok max (take_until_enc delim content ++ r)
-    == Inr (content, |content| + |delim|)] requires that the delimiter does
-    NOT occur as a prefix anywhere inside the content.  That is a
-    WHOLE-DELIMITER + WHOLE-CONTENT property (\"no [delim] substring of
-    [content]\"), which needs induction over BOTH [content] and [delim]
-    (a 2D-induction).  For a SYMBOLIC [delim] this does not unfold in
-    lockstep with [scan_until_delim] (fstar-proofs §60) — the generic
-    roundtrip is therefore NOT shipped as a [codec] field.
+    [take_until] is now a genuine [codec (list byte)] with a 0-admit generic
+    roundtrip.  The §60 2D-induction wall was cracked by making the delimiter-
+    overlap-freedom ([no_overlap_delim]) an EXPLICIT part of [wfcv]: for a
+    non-empty suffix [s] of [content], [is_prefix_of delim (s @ delim)] must be
+    false.  This rules out both an in-content [delim] occurrence and a trailing
+    border that would combine with the appended delimiter (the self-overlap
+    case).  The generic exactness lemma [lemma_scan_until_split_general] then
+    discharges by induction on [content], chaining [lemma_no_overlap_cons],
+    [List.Tot.append_assoc], and [lemma_is_prefix_of_app_ignores_tail].
 
-    The per-delimiter concrete roundtrips (fixed [-->]/[]]>]/[?>], the
-    [one_of] per-instantiation pattern) all verify 0-admit.  [take_until]
-    is exported as encoder/decoder/wfcv helpers plus the generic
-    [lemma_take_until_dec_err_bound]/[lemma_take_until_dec_consumed_bound];
-    the roundtrip for a concrete delimiter must be proven at the call site
-    (the [custom] codec's [roundtrip] argument) by [lemma_seq_list_bij_rev]
-    + [assert_norm] on the concrete [scan_until_delim] (fstar-proofs §60). *)
+    The old per-instantiation NOTE is superseded; no [custom] roundtrip or
+    [assert_norm] is required at call sites — callers use [take_until]'s
+    [.roundtrip] directly, proving only that their content satisfies the
+    [no_overlap_delim] guard (definitional for a concrete [delim]). *)
