@@ -3133,3 +3133,235 @@ let take_until (delim: list byte) (content_ok: list byte -> Tot bool) (max: nat)
     [assert_norm] is required at call sites — callers use [take_until]'s
     [.roundtrip] directly, proving only that their content satisfies the
     [no_overlap_delim] guard (definitional for a concrete [delim]). *)
+
+
+(* ========================================================================
+   Combinator 23: sep_by1 — one-or-more elements separated by a literal.
+   ======================================================================== *)
+
+
+(** [sep_by1_enc] — encode a NON-EMPTY list [v1; …; vn] as
+    [c.enc v1 ++ sep.enc () ++ c.enc v2 ++ … ++ c.enc vn] (the separator goes
+    BETWEEN elements, not after the last).  A lone element encodes as [c.enc v].
+    Defined by recursion on the list. *)
+let rec sep_by1_enc (#a:Type) (c: codec a) (sep: codec unit) (vs: list a)
+  : Tot byte_seq (decreases vs) =
+  match vs with
+  | [] -> Seq.empty
+  | v :: tl ->
+      (match tl with
+       | [] -> c.enc v
+       | _ -> Seq.append (c.enc v)
+                 (Seq.append (sep.enc ()) (sep_by1_enc c sep tl)))
+
+
+(** [sep_by1_dec_aux] — decode up to [fuel] more elements separated by [sep].
+
+    Fuel-based termination (fstar-proofs §85 Wall 1): the recursion counter is
+    [fuel : nat] ([decreases fuel]), NOT [Seq.length s] — an arbitrary element
+    codec may consume 0 bytes, so a length decrease is not syntactically
+    guaranteed.  [fuel] is threaded from the [max] bound folded into [wfcv].
+
+    Reads one element [v]; if the remaining input is empty, stops with [v].
+    Otherwise it tries to read the separator [sep]: on success it recurses with
+    [fuel−1]; on failure (no separator) it stops with [v] as a single-element
+    list.  This is the greedy `(element sep)* element` scan. *)
+let rec sep_by1_dec_aux (#a:Type) (c: codec a) (sep: codec unit) (fuel: nat)
+  (s: byte_seq) : Tot (decode_result (list a)) (decreases fuel) =
+  if fuel = 0
+  then Inl (mk_decode_error UnexpectedEndOfInput (Seq.length s))
+  else match c.dec s with
+  | Inl err -> Inl err
+  | Inr (v, n1) ->
+      if n1 > Seq.length s
+      then Inl (mk_decode_error UnexpectedEndOfInput (Seq.length s))
+      else
+        let rest = Seq.slice s n1 (Seq.length s) in
+        if Seq.length rest = 0
+        then Inr ([v], n1)
+        else match sep.dec rest with
+        | Inl _ -> Inr ([v], n1)          (* no separator: single element, stop *)
+        | Inr ((), ns) ->
+            if ns > Seq.length rest
+            then Inr ([v], n1)
+            else
+              let rest2 = Seq.slice rest ns (Seq.length rest) in
+              match sep_by1_dec_aux c sep (fuel - 1) rest2 with
+              | Inl err -> Inl ({ err with err_pos = err.err_pos + n1 + ns })
+              | Inr (tl, n2) -> Inr (v :: tl, n1 + ns + n2)
+
+
+(** [sep_by1_dec] — decode a non-empty separator-interleaved sequence from [s]. *)
+let sep_by1_dec (#a:Type) (c: codec a) (sep: codec unit) (max: nat)
+  (s: byte_seq) : Tot (decode_result (list a)) =
+  sep_by1_dec_aux c sep max s
+
+
+(** [sep_by1_wfcv] — well-formed non-empty list: at most [max] elements, each
+    [c.wfcv], and the separator is well-formed ([sep.wfcv ()]).  The separator's
+    well-formedness is carried here (not in the per-element [c.wfcv]) so the
+    generic roundtrip can discharge [sep.roundtrip]. *)
+let sep_by1_wfcv (#a:Type) (c: codec a) (sep: codec unit) (max: nat) (vs: list a) : bool =
+  Cons? vs && List.Tot.length vs <= max && count_wfcv_list c vs && sep.wfcv () &&
+  Seq.length (sep.enc ()) > 0
+
+
+(** [sep_by1_wfcv_prop] — conjunction of [c.wfcv_prop] over the elements plus
+    the separator's [sep.wfcv_prop ()]. *)
+let sep_by1_wfcv_prop (#a:Type) (c: codec a) (sep: codec unit) (vs: list a) : prop =
+  count_wfcv_prop_list c vs /\ sep.wfcv_prop ()
+
+
+(** [sep_by1_rest_cond] — the encoding of a non-empty list plus a trailing
+    suffix [r] must leave [r] unambiguous: the last element's own [c.rest_cond]
+    holds against [r], and each non-final element's [c.rest_cond] holds against
+    [sep.enc () ++ (rest of the encoding) ++ r].  At each non-final position the
+    separator's own [wfcv]/[wfcv_prop]/[rest_cond] also hold (so the separated
+    step's [sep.roundtrip] discharges). *)
+let rec sep_by1_rest_cond (#a:Type) (c: codec a) (sep: codec unit)
+  (vs: list a) (r: byte_seq) : Tot prop (decreases vs) =
+  match vs with
+  | [] -> True
+  | v :: tl ->
+      (match tl with
+       | [] -> c.rest_cond v r /\ Seq.length r = 0
+       | _ -> c.rest_cond v (sep.enc () `Seq.append` sep_by1_enc c sep tl `Seq.append` r)
+              /\ sep.wfcv () /\ sep.wfcv_prop ()
+              /\ sep.rest_cond () (sep_by1_enc c sep tl `Seq.append` r)
+              /\ sep_by1_rest_cond c sep tl r)
+
+
+(** [sep_by1_roundtrip] — generic 0-admit roundtrip: decoding the encoding of a
+    non-empty, ≤ [max]-element list recovers the list.  Induction on the list,
+    mirroring [count_roundtrip_list]. *)
+#push-options "--z3rlimit 400 --fuel 8 --ifuel 8"
+let rec sep_by1_roundtrip (#a:Type) (c: codec a) (sep: codec unit) (max: nat)
+  (vs: list a) (r: byte_seq) : Lemma
+  (requires
+    sep_by1_wfcv c sep max vs /\
+    sep_by1_wfcv_prop c sep vs /\
+    sep_by1_rest_cond c sep vs r)
+  (ensures
+    sep_by1_dec c sep max (sep_by1_enc c sep vs `Seq.append` r)
+    == Inr (vs, Seq.length (sep_by1_enc c sep vs)))
+  (decreases vs)
+  = match vs with
+    | [] -> ()
+    | v :: tl ->
+        (match tl with
+         | [] ->
+             c.roundtrip v r;
+             lemma_slice_after_prefix (c.enc v) r;
+             ()
+         | _ ->
+             let enc_tl = sep_by1_enc c sep tl in
+             let enc_rest = sep.enc () `Seq.append` enc_tl in
+             c.roundtrip v (enc_rest `Seq.append` r);
+             Seq.append_assoc (c.enc v) enc_rest r;
+             lemma_slice_after_prefix (c.enc v) (enc_rest `Seq.append` r);
+             sep.roundtrip () (enc_tl `Seq.append` r);
+             Seq.append_assoc (sep.enc ()) enc_tl r;
+             lemma_slice_after_prefix (sep.enc ()) (enc_tl `Seq.append` r);
+             assert (Seq.slice (sep.enc () `Seq.append` (enc_tl `Seq.append` r))
+                               (Seq.length (sep.enc ()))
+                               (Seq.length (sep.enc () `Seq.append` (enc_tl `Seq.append` r)))
+                     == enc_tl `Seq.append` r);
+             sep_by1_roundtrip c sep (max - 1) tl r;
+             Seq.lemma_len_append (c.enc v) enc_rest;
+             Seq.lemma_len_append (sep.enc ()) enc_tl;
+             Seq.lemma_len_append (c.enc v) (sep.enc () `Seq.append` enc_tl);
+             ())
+#pop-options
+
+
+(** [sep_by1_dec_consumed_bound] — the decoder consumes at most the input. *)
+#push-options "--z3rlimit 120"
+let rec sep_by1_dec_consumed_bound (#a:Type) (c: codec a) (sep: codec unit)
+  (fuel: nat) (s: byte_seq) : Lemma
+  (ensures (match sep_by1_dec_aux c sep fuel s with
+            | Inr (_, n) -> n <= Seq.length s
+            | _ -> True))
+  (decreases fuel)
+  = if fuel = 0 then ()
+    else begin
+      c.dec_consumed_bound s;
+      match c.dec s with
+      | Inl _ -> ()
+      | Inr (_, n1) ->
+          if n1 <= Seq.length s then begin
+            let rest = Seq.slice s n1 (Seq.length s) in
+            if Seq.length rest > 0 then begin
+              sep.dec_consumed_bound rest;
+              match sep.dec rest with
+              | Inl _ -> ()
+              | Inr ((), ns) ->
+                  if ns <= Seq.length rest then begin
+                    let rest2 = Seq.slice rest ns (Seq.length rest) in
+                    sep_by1_dec_consumed_bound c sep (fuel - 1) rest2;
+                    ()
+                  end else ()
+            end else ()
+          end else ()
+    end
+#pop-options
+
+
+(** [sep_by1_dec_err_bound] — error positions are bounded by the input length. *)
+#push-options "--z3rlimit 120"
+let rec sep_by1_dec_err_bound (#a:Type) (c: codec a) (sep: codec unit)
+  (fuel: nat) (s: byte_seq) : Lemma
+  (ensures (match sep_by1_dec_aux c sep fuel s with
+            | Inl err -> err.err_pos <= Seq.length s
+            | _ -> True))
+  (decreases fuel)
+  = if fuel = 0 then ()
+    else begin
+      c.dec_err_bound s;
+      match c.dec s with
+      | Inl _ -> ()
+      | Inr (_, n1) ->
+          if n1 <= Seq.length s then begin
+            let rest = Seq.slice s n1 (Seq.length s) in
+            if Seq.length rest > 0 then begin
+              sep.dec_err_bound rest;
+              match sep.dec rest with
+              | Inl _ -> ()
+              | Inr ((), ns) ->
+                  if ns <= Seq.length rest then begin
+                    let rest2 = Seq.slice rest ns (Seq.length rest) in
+                    sep_by1_dec_err_bound c sep (fuel - 1) rest2;
+                    ()
+                  end else ()
+            end else ()
+          end else ()
+    end
+#pop-options
+
+
+(** [sep_by1] — combinator 23: one-or-more elements separated by a fixed literal
+    separator.  The separator goes BETWEEN elements (NOT after the last).  [max]
+    bounds the element count (fuel for the decoder, carried into [wfcv]). *)
+#push-options "--z3rlimit 120"
+let sep_by1 (#a:Type) (c: codec a) (sep: codec unit) (max: nat) : codec (list a) = {
+  enc       = (fun vs -> sep_by1_enc c sep vs);
+  dec       = (fun s -> sep_by1_dec c sep max s);
+  wfcv      = (fun vs -> sep_by1_wfcv c sep max vs);
+  wfcv_prop = (fun vs -> sep_by1_wfcv_prop c sep vs);
+  rest_cond = (fun vs r -> sep_by1_rest_cond c sep vs r);
+  roundtrip = (fun vs r -> sep_by1_roundtrip c sep max vs r);
+  dec_err_bound = (fun s -> sep_by1_dec_err_bound c sep max s);
+  dec_consumed_bound = (fun s -> sep_by1_dec_consumed_bound c sep max s);
+}
+#pop-options
+
+
+(** NOTE on [sep_by1] roundtrip scope.
+
+    [sep_by1] is a genuine 0-admit [codec (list a)] for the `(element sep)*
+    element` interleave (DNS dotted names, PATH, CSV, and MIME-style runs).
+    Wall 1 (fuel termination, §85) is handled by threading [max] as a
+    [decreases fuel] counter in [sep_by1_dec_aux].  Wall 2 (Seq-reduction
+    opacity of `product`/`map_`, §85) is avoided because [sep_by1] is built
+    DIRECTLY on the element codec's fields (not composed through `product`/
+    `map_`), so `.roundtrip` is a plain induction over the list.  Callers use
+    [sep_by1]'s [.roundtrip] directly. *)
