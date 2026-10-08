@@ -3234,7 +3234,7 @@ let rec sep_by1_rest_cond (#a:Type) (c: codec a) (sep: codec unit)
 (** [sep_by1_roundtrip] — generic 0-admit roundtrip: decoding the encoding of a
     non-empty, ≤ [max]-element list recovers the list.  Induction on the list,
     mirroring [count_roundtrip_list]. *)
-#push-options "--z3rlimit 400 --fuel 8 --ifuel 8"
+#push-options "--z3rlimit 600 --fuel 8 --ifuel 8"
 let rec sep_by1_roundtrip (#a:Type) (c: codec a) (sep: codec unit) (max: nat)
   (vs: list a) (r: byte_seq) : Lemma
   (requires
@@ -3581,3 +3581,342 @@ let sep_by1_trailing (#a:Type) (c: codec a) (sep: codec unit) (max: nat) : codec
 }
 #pop-options
 
+
+
+(* ========================================================================
+   Combinator 25: sep_by1_opt_trailing — a name with an OPTIONAL trailing
+   separator (the FQ/non-FQ form in ONE codec).
+   ======================================================================== *)
+
+
+(** [sep_by1_opt_trailing_enc] — encode [vs] with an optional trailing
+    separator: [sep_by1_enc c sep vs] when [trailing = false], or
+    [sep_by1_enc c sep vs ++ sep.enc ()] when [trailing = true]. *)
+let sep_by1_opt_trailing_enc (#a:Type) (c: codec a) (sep: codec unit)
+  (vs: list a) (trailing: bool) : Tot byte_seq =
+  if trailing
+  then sep_by1_trailing_enc c sep vs
+  else sep_by1_enc c sep vs
+
+
+(** [sep_by1_opt_trailing_dec_aux] — greedy `(element sep)* element (sep)?`
+    decoder: read an element, then look for a separator.  If none follows,
+    stop with [trailing = false]; if one follows and then nothing, stop with
+    [trailing = true]; else recurse.  Fuel-based (§85 Wall 1). *)
+let rec sep_by1_opt_trailing_dec_aux (#a:Type) (c: codec a) (sep: codec unit) (fuel: nat)
+  (s: byte_seq) : Tot (decode_result (list a & bool)) (decreases fuel) =
+  if fuel = 0
+  then Inl (mk_decode_error UnexpectedEndOfInput (Seq.length s))
+  else match c.dec s with
+  | Inl err -> Inl err
+  | Inr (v, n1) ->
+      if n1 > Seq.length s
+      then Inl (mk_decode_error UnexpectedEndOfInput (Seq.length s))
+      else
+        let rest = Seq.slice s n1 (Seq.length s) in
+        if Seq.length rest = 0
+        then Inr (([v], false), n1)
+        else match sep.dec rest with
+        | Inl _ -> Inr (([v], false), n1)
+        | Inr ((), ns) ->
+            if ns > Seq.length rest
+            then Inr (([v], false), n1)
+            else
+              let rest2 = Seq.slice rest ns (Seq.length rest) in
+              if Seq.length rest2 = 0
+              then Inr (([v], true), n1 + ns)
+              else match sep_by1_opt_trailing_dec_aux c sep (fuel - 1) rest2 with
+              | Inl err -> Inl ({ err with err_pos = err.err_pos + n1 + ns })
+              | Inr ((tl_list, tl_trailing), n2) -> Inr ((v :: tl_list, tl_trailing), n1 + ns + n2)
+
+
+(** [count_nonempty_enc] — every element's encoding is non-empty (needed for
+    the optional-trailing decoder's terminal check). *)
+let rec count_nonempty_enc (#a:Type) (c: codec a) (vs: list a) : bool =
+  match vs with
+  | [] -> true
+  | v :: tl -> Seq.length (c.enc v) > 0 && count_nonempty_enc c tl
+
+
+(** [lemma_sep_by1_enc_nonempty] — the encoding of a non-empty list with a
+    non-empty separator AND non-empty elements has positive length. *)
+#push-options "--z3rlimit 80"
+let rec lemma_sep_by1_enc_nonempty (#a:Type) (c: codec a) (sep: codec unit) (vs: list a) : Lemma
+  (requires Cons? vs /\ Seq.length (sep.enc ()) > 0 /\ count_nonempty_enc c vs)
+  (ensures Seq.length (sep_by1_enc c sep vs) > 0)
+  (decreases vs)
+  = match vs with
+    | [] -> ()
+    | v :: tl ->
+        (match tl with
+         | [] -> ()
+         | _ ->
+             Seq.lemma_len_append (c.enc v) (Seq.append (sep.enc ()) (sep_by1_enc c sep tl));
+             Seq.lemma_len_append (sep.enc ()) (sep_by1_enc c sep tl);
+             ())
+#pop-options
+
+
+(** [sep_by1_opt_trailing_dec] — decode a name with an optional trailing separator. *)
+let sep_by1_opt_trailing_dec (#a:Type) (c: codec a) (sep: codec unit) (max: nat)
+  (s: byte_seq) : Tot (decode_result (list a & bool)) =
+  sep_by1_opt_trailing_dec_aux c sep max s
+
+
+(** [sep_by1_opt_trailing_wfcv] — well-formed non-empty list (≤ [max] elements,
+    each [c.wfcv], separator well-formed and non-empty).  The trailing flag is
+    part of the value, so [wfcv] is independent of it. *)
+let sep_by1_opt_trailing_wfcv (#a:Type) (c: codec a) (sep: codec unit) (max: nat) (x: list a & bool) : bool =
+  let vs, _ = x in
+  Cons? vs && List.Tot.length vs <= max && count_wfcv_list c vs && sep.wfcv () &&
+  Seq.length (sep.enc ()) > 0 && count_nonempty_enc c vs
+
+
+(** [sep_by1_opt_trailing_wfcv_prop] — conjunction of [c.wfcv_prop] + [sep.wfcv_prop]. *)
+let sep_by1_opt_trailing_wfcv_prop (#a:Type) (c: codec a) (sep: codec unit) (x: list a & bool) : prop =
+  let vs, _ = x in
+  count_wfcv_prop_list c vs /\ sep.wfcv_prop ()
+
+
+(** [sep_by1_opt_trailing_rest_cond] — the suffix [r] must be consistent with
+    the trailing flag: for [trailing = true] the trailing separator is consumed
+    and [r] must be EMPTY (terminal); for [trailing = false] the next byte is
+    NOT a separator, so [r] must not begin with the separator (here enforced by
+    requiring [sep.dec r] to fail). *)
+let rec sep_by1_opt_trailing_rest_cond (#a:Type) (c: codec a) (sep: codec unit)
+  (x: list a & bool) (r: byte_seq) : Tot prop (decreases (fst x)) =
+  let vs, trailing = x in
+  match vs with
+  | [] -> True
+  | v :: tl ->
+      (match tl with
+       | [] ->
+           if trailing
+           then c.rest_cond v (sep.enc () `Seq.append` r)
+                /\ sep.wfcv () /\ sep.wfcv_prop ()
+                /\ sep.rest_cond () r /\ Seq.length r = 0
+           else c.rest_cond v r /\ Seq.length r = 0
+       | _ ->
+           c.rest_cond v (sep.enc () `Seq.append` sep_by1_opt_trailing_enc c sep tl trailing `Seq.append` r)
+           /\ sep.wfcv () /\ sep.wfcv_prop ()
+           /\ sep.rest_cond () (sep_by1_opt_trailing_enc c sep tl trailing `Seq.append` r)
+           /\ sep_by1_opt_trailing_rest_cond c sep (tl, trailing) r)
+
+
+(** [sep_by1_opt_trailing_wfcv_false] — [sep_by1_opt_trailing_wfcv (vs, false)]
+    equals [sep_by1_wfcv]. *)
+let sep_by1_opt_trailing_wfcv_false (#a:Type) (c: codec a) (sep: codec unit) (max: nat) (vs: list a) : Lemma
+  (requires sep_by1_opt_trailing_wfcv c sep max (vs, false))
+  (ensures sep_by1_wfcv c sep max vs)
+  = ()
+let sep_by1_opt_trailing_wfcv_true (#a:Type) (c: codec a) (sep: codec unit) (max: nat) (vs: list a) : Lemma
+  (requires sep_by1_opt_trailing_wfcv c sep max (vs, true))
+  (ensures sep_by1_trailing_wfcv c sep max vs)
+  = ()
+
+
+(** [sep_by1_opt_trailing_rest_cond_false] — [sep_by1_opt_trailing_rest_cond
+    (vs, false) r] implies [sep_by1_rest_cond vs r] (the trailing flag is false,
+    so the tail encoding is the non-trailing [sep_by1_enc]).  Induction on [vs]. *)
+#push-options "--z3rlimit 400 --fuel 8 --ifuel 8"
+let rec sep_by1_opt_trailing_rest_cond_false (#a:Type) (c: codec a) (sep: codec unit)
+  (vs: list a) (r: byte_seq) : Lemma
+  (requires sep_by1_opt_trailing_rest_cond c sep (vs, false) r)
+  (ensures sep_by1_rest_cond c sep vs r)
+  (decreases vs)
+  = match vs with
+    | [] -> ()
+    | v :: tl ->
+        (match tl with
+         | [] -> ()
+         | _ ->
+             sep_by1_opt_trailing_rest_cond_false c sep tl r;
+             ())
+#pop-options
+
+
+(** [sep_by1_opt_trailing_rest_cond_true] — [sep_by1_opt_trailing_rest_cond
+    (vs, true) r] implies [sep_by1_trailing_rest_cond vs r]. *)
+#push-options "--z3rlimit 400 --fuel 8 --ifuel 8"
+let rec sep_by1_opt_trailing_rest_cond_true (#a:Type) (c: codec a) (sep: codec unit)
+  (vs: list a) (r: byte_seq) : Lemma
+  (requires sep_by1_opt_trailing_rest_cond c sep (vs, true) r)
+  (ensures sep_by1_trailing_rest_cond c sep vs r)
+  (decreases vs)
+  = match vs with
+    | [] -> ()
+    | v :: tl ->
+        (match tl with
+         | [] -> ()
+         | _ ->
+             sep_by1_opt_trailing_rest_cond_true c sep tl r;
+             ())
+#pop-options
+
+
+(** [sep_by1_opt_trailing_roundtrip] — generic 0-admit roundtrip for the
+    optional-trailing form, by case-splitting [trailing] at the top so the
+    `if trailing` in the encoder reduces to a CONCRETE [sep_by1_enc] /
+    [sep_by1_trailing_enc] in each branch (mirroring the two proven positive
+    inductions), then recursing on [vs]. *)
+#push-options "--z3rlimit 800 --fuel 16 --ifuel 8"
+let rec sep_by1_opt_trailing_roundtrip (#a:Type) (c: codec a) (sep: codec unit) (max: nat)
+  (x: list a & bool) (r: byte_seq) : Lemma
+  (requires
+    sep_by1_opt_trailing_wfcv c sep max x /\
+    sep_by1_opt_trailing_wfcv_prop c sep x /\
+    sep_by1_opt_trailing_rest_cond c sep x r)
+  (ensures
+    sep_by1_opt_trailing_dec c sep max (sep_by1_opt_trailing_enc c sep (fst x) (snd x) `Seq.append` r)
+    == Inr (x, Seq.length (sep_by1_opt_trailing_enc c sep (fst x) (snd x))))
+  (decreases (fst x))
+  = let vs, trailing = x in
+    match vs with
+    | [] -> ()
+    | v :: tl ->
+        if trailing
+        then
+          (match tl with
+           | [] ->
+               c.roundtrip v (sep.enc () `Seq.append` r);
+               Seq.append_assoc (c.enc v) (sep.enc ()) r;
+               lemma_slice_after_prefix (c.enc v) (sep.enc () `Seq.append` r);
+               sep.roundtrip () r;
+               lemma_slice_after_prefix (sep.enc ()) r;
+               Seq.lemma_len_append (c.enc v) (sep.enc ());
+               ()
+           | _ ->
+               let enc_tl = sep_by1_trailing_enc c sep tl in
+               let enc_rest = sep.enc () `Seq.append` enc_tl in
+               c.roundtrip v (enc_rest `Seq.append` r);
+               Seq.append_assoc (c.enc v) enc_rest r;
+               lemma_slice_after_prefix (c.enc v) (enc_rest `Seq.append` r);
+               sep.roundtrip () (enc_tl `Seq.append` r);
+               Seq.append_assoc (sep.enc ()) enc_tl r;
+               lemma_slice_after_prefix (sep.enc ()) (enc_tl `Seq.append` r);
+               assert (Seq.slice (sep.enc () `Seq.append` (enc_tl `Seq.append` r))
+                                 (Seq.length (sep.enc ()))
+                                 (Seq.length (sep.enc () `Seq.append` (enc_tl `Seq.append` r)))
+                       == enc_tl `Seq.append` r);
+               sep_by1_opt_trailing_roundtrip c sep (max - 1) (tl, true) r;
+               Seq.lemma_len_append (c.enc v) enc_rest;
+               Seq.lemma_len_append (sep.enc ()) enc_tl;
+               Seq.lemma_len_append (c.enc v) (sep.enc () `Seq.append` enc_tl);
+               ())
+        else
+          (match tl with
+           | [] ->
+               c.roundtrip v r;
+               lemma_slice_after_prefix (c.enc v) r;
+               ()
+           | _ ->
+               assert (sep_by1_opt_trailing_enc c sep (v :: tl) false
+                       == c.enc v `Seq.append` (sep.enc () `Seq.append` (sep_by1_enc c sep tl)));
+               let enc_tl = sep_by1_enc c sep tl in
+               let enc_rest = sep.enc () `Seq.append` enc_tl in
+               c.roundtrip v (enc_rest `Seq.append` r);
+               Seq.append_assoc (c.enc v) enc_rest r;
+               lemma_slice_after_prefix (c.enc v) (enc_rest `Seq.append` r);
+               sep.roundtrip () (enc_tl `Seq.append` r);
+               Seq.append_assoc (sep.enc ()) enc_tl r;
+               lemma_slice_after_prefix (sep.enc ()) (enc_tl `Seq.append` r);
+               assert (Seq.slice (sep.enc () `Seq.append` (enc_tl `Seq.append` r))
+                                 (Seq.length (sep.enc ()))
+                                 (Seq.length (sep.enc () `Seq.append` (enc_tl `Seq.append` r)))
+                       == enc_tl `Seq.append` r);
+               sep_by1_opt_trailing_roundtrip c sep (max - 1) (tl, false) r;
+               Seq.lemma_len_append (c.enc v) enc_rest;
+               Seq.lemma_len_append (sep.enc ()) enc_tl;
+               Seq.lemma_len_append (c.enc v) (sep.enc () `Seq.append` enc_tl);
+               assert (Seq.length (sep_by1_opt_trailing_enc c sep (v :: tl) false)
+                       == Seq.length (c.enc v) + Seq.length (sep.enc ()) + Seq.length enc_tl);
+               assert ((v :: tl, false) == x);
+               lemma_sep_by1_enc_nonempty c sep tl;
+               assert (Seq.length enc_tl > 0);
+               Seq.lemma_len_append enc_tl r;
+               assert (Seq.length (enc_tl `Seq.append` r) > 0);
+               ())
+#pop-options
+
+
+(** [sep_by1_opt_trailing_dec_consumed_bound] — the decoder consumes at most the input. *)
+#push-options "--z3rlimit 120"
+let rec sep_by1_opt_trailing_dec_consumed_bound (#a:Type) (c: codec a) (sep: codec unit)
+  (fuel: nat) (s: byte_seq) : Lemma
+  (ensures (match sep_by1_opt_trailing_dec_aux c sep fuel s with
+            | Inr (_, n) -> n <= Seq.length s
+            | _ -> True))
+  (decreases fuel)
+  = if fuel = 0 then ()
+    else begin
+      c.dec_consumed_bound s;
+      match c.dec s with
+      | Inl _ -> ()
+      | Inr (_, n1) ->
+          if n1 <= Seq.length s then begin
+            let rest = Seq.slice s n1 (Seq.length s) in
+            if Seq.length rest > 0 then begin
+              sep.dec_consumed_bound rest;
+              match sep.dec rest with
+              | Inl _ -> ()
+              | Inr ((), ns) ->
+                  if ns <= Seq.length rest then begin
+                    let rest2 = Seq.slice rest ns (Seq.length rest) in
+                    sep_by1_opt_trailing_dec_consumed_bound c sep (fuel - 1) rest2;
+                    ()
+                  end else ()
+            end else ()
+          end else ()
+    end
+#pop-options
+
+
+(** [sep_by1_opt_trailing_dec_err_bound] — error positions are bounded by input length. *)
+#push-options "--z3rlimit 120"
+let rec sep_by1_opt_trailing_dec_err_bound (#a:Type) (c: codec a) (sep: codec unit)
+  (fuel: nat) (s: byte_seq) : Lemma
+  (ensures (match sep_by1_opt_trailing_dec_aux c sep fuel s with
+            | Inl err -> err.err_pos <= Seq.length s
+            | _ -> True))
+  (decreases fuel)
+  = if fuel = 0 then ()
+    else begin
+      c.dec_err_bound s;
+      match c.dec s with
+      | Inl _ -> ()
+      | Inr (_, n1) ->
+          if n1 <= Seq.length s then begin
+            let rest = Seq.slice s n1 (Seq.length s) in
+            if Seq.length rest > 0 then begin
+              sep.dec_err_bound rest;
+              match sep.dec rest with
+              | Inl _ -> ()
+              | Inr ((), ns) ->
+                  if ns <= Seq.length rest then begin
+                    let rest2 = Seq.slice rest ns (Seq.length rest) in
+                    sep_by1_opt_trailing_dec_err_bound c sep (fuel - 1) rest2;
+                    ()
+                  end else ()
+            end else ()
+          end else ()
+    end
+#pop-options
+
+
+(** [sep_by1_opt_trailing] — combinator 25: a name with an OPTIONAL trailing
+    separator, carrying the trailing flag in the value ([list a & bool]).
+    [trailing = true] is the FQ form (trailing dot); [false] the non-FQ form.
+    ONE decoder, so its roundtrip is a single positive induction — no
+    cross-codec disambiguation needed. *)
+#push-options "--z3rlimit 120"
+let sep_by1_opt_trailing (#a:Type) (c: codec a) (sep: codec unit) (max: nat) : codec (list a & bool) = {
+  enc       = (fun x -> sep_by1_opt_trailing_enc c sep (fst x) (snd x));
+  dec       = (fun s -> sep_by1_opt_trailing_dec c sep max s);
+  wfcv      = (fun x -> sep_by1_opt_trailing_wfcv c sep max x);
+  wfcv_prop = (fun x -> sep_by1_opt_trailing_wfcv_prop c sep x);
+  rest_cond = (fun x r -> sep_by1_opt_trailing_rest_cond c sep x r);
+  roundtrip = (fun x r -> sep_by1_opt_trailing_roundtrip c sep max x r);
+  dec_err_bound = (fun s -> sep_by1_opt_trailing_dec_err_bound c sep max s);
+  dec_consumed_bound = (fun s -> sep_by1_opt_trailing_dec_consumed_bound c sep max s);
+}
+#pop-options

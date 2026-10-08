@@ -995,4 +995,21 @@ let test_sep_by1_trailing_roundtrip () : Lemma
     == Inr ([[0x31uy]; [0x32uy]; [0x33uy]], 6))
   = (sep_by1_trailing (satisfy_many1 is_digit) (byte_val 0x2Euy) 4).roundtrip
       [[0x31uy]; [0x32uy]; [0x33uy]] Seq.empty
+
+
+(** [test_sep_by1_opt_trailing_roundtrip] — the optional-trailing form
+    roundtrips in BOTH the non-FQ ([trailing = false]) and FQ ([trailing = true])
+    positions via [sep_by1_opt_trailing]. *)
+let test_sep_by1_opt_trailing_roundtrip () : Lemma
+  (ensures
+    (let c = sep_by1_opt_trailing (satisfy_many1 is_digit) (byte_val 0x2Euy) 4 in
+     c.dec (c.enc ([[0x31uy]; [0x32uy]], false) `Seq.append` Seq.empty)
+       == Inr (([[0x31uy]; [0x32uy]], false), 3) /\
+     c.dec (c.enc ([[0x31uy]; [0x32uy]], true) `Seq.append` Seq.empty)
+       == Inr (([[0x31uy]; [0x32uy]], true), 4)))
+  =
+  (sep_by1_opt_trailing (satisfy_many1 is_digit) (byte_val 0x2Euy) 4).roundtrip
+    ([[0x31uy]; [0x32uy]], false) Seq.empty;
+  (sep_by1_opt_trailing (satisfy_many1 is_digit) (byte_val 0x2Euy) 4).roundtrip
+    ([[0x31uy]; [0x32uy]], true) Seq.empty
 #pop-options

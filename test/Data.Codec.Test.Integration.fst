@@ -566,6 +566,10 @@ let _ct125 = Data.Codec.Test.Roundtrip.test_sep_by1_roundtrip
 let _ct126 = Data.Codec.Test.Roundtrip.test_sep_by1_trailing_roundtrip
 
 
+(** [test_sep_by1_opt_trailing_roundtrip] *)
+let _ct127 = Data.Codec.Test.Roundtrip.test_sep_by1_opt_trailing_roundtrip
+
+
 (* ── Anchor numbering note ──
    Concrete tests: _ct0.._ct126 (127 anchors) cover roundtrip, error paths,
    char predicates, and derived combinators.
@@ -1095,7 +1099,13 @@ let _co22 = sep_by1
 let _co23 = sep_by1_trailing
 
 
-(* ── Derived combinators (Data.Codec.fst) ── *)
+(** [sep_by1_opt_trailing] *)
+let _co24 = sep_by1_opt_trailing
+
+
+(** [count_nonempty_enc] *)
+let _co24_ne = count_nonempty_enc
+
 
 
 (** [choice] *)
