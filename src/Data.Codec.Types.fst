@@ -3580,3 +3580,4 @@ let sep_by1_trailing (#a:Type) (c: codec a) (sep: codec unit) (max: nat) : codec
   dec_consumed_bound = (fun s -> sep_by1_trailing_dec_consumed_bound c sep max s);
 }
 #pop-options
+
