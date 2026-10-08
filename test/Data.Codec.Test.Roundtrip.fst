@@ -973,4 +973,26 @@ let test_satisfy_many1_alpha_roundtrip () : Lemma
     ((satisfy_many1 is_alpha).enc [0x41uy; 0x62uy] `Seq.append` seq_of_list [0x30uy])
     == Inr ([0x41uy; 0x62uy], 2))
   = (satisfy_many1 is_alpha).roundtrip [0x41uy; 0x62uy] (seq_of_list [0x30uy])
+
+
+(** [test_sep_by1_roundtrip] — one-or-more digits separated by a literal dot
+    roundtrip via the generic [sep_by1.roundtrip] (DNS dotted-form shape). *)
+let test_sep_by1_roundtrip () : Lemma
+  (ensures (sep_by1 (satisfy_many1 is_digit) (byte_val 0x2Euy) 4).dec
+    ((sep_by1 (satisfy_many1 is_digit) (byte_val 0x2Euy) 4).enc
+      [[0x31uy]; [0x32uy]; [0x33uy]] `Seq.append` Seq.empty)
+    == Inr ([[0x31uy]; [0x32uy]; [0x33uy]], 5))
+  = (sep_by1 (satisfy_many1 is_digit) (byte_val 0x2Euy) 4).roundtrip
+      [[0x31uy]; [0x32uy]; [0x33uy]] Seq.empty
+
+
+(** [test_sep_by1_trailing_roundtrip] — one-or-more digits each followed by a
+    literal dot (the trailing-dot FQ shape) roundtrip via [sep_by1_trailing]. *)
+let test_sep_by1_trailing_roundtrip () : Lemma
+  (ensures (sep_by1_trailing (satisfy_many1 is_digit) (byte_val 0x2Euy) 4).dec
+    ((sep_by1_trailing (satisfy_many1 is_digit) (byte_val 0x2Euy) 4).enc
+      [[0x31uy]; [0x32uy]; [0x33uy]] `Seq.append` Seq.empty)
+    == Inr ([[0x31uy]; [0x32uy]; [0x33uy]], 6))
+  = (sep_by1_trailing (satisfy_many1 is_digit) (byte_val 0x2Euy) 4).roundtrip
+      [[0x31uy]; [0x32uy]; [0x33uy]] Seq.empty
 #pop-options

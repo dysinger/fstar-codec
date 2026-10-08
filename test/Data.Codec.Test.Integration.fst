@@ -558,8 +558,16 @@ let _ct123 = Data.Codec.Test.Roundtrip.test_satisfy_many1_digits_roundtrip
 let _ct124 = Data.Codec.Test.Roundtrip.test_satisfy_many1_alpha_roundtrip
 
 
+(** [test_sep_by1_roundtrip] *)
+let _ct125 = Data.Codec.Test.Roundtrip.test_sep_by1_roundtrip
+
+
+(** [test_sep_by1_trailing_roundtrip] *)
+let _ct126 = Data.Codec.Test.Roundtrip.test_sep_by1_trailing_roundtrip
+
+
 (* ── Anchor numbering note ──
-   Concrete tests: _ct0.._ct124 (125 anchors) cover roundtrip, error paths,
+   Concrete tests: _ct0.._ct126 (127 anchors) cover roundtrip, error paths,
    char predicates, and derived combinators.
    Pulse.fst encoders/decoders/dispatch: _pulse0.._pulse22 (with _pulse5a/5b,
    _pulse11a/11b, _pulse22a/22b sub-anchors).
@@ -1077,6 +1085,14 @@ let _co20 = satisfy_many0
 
 (** [satisfy_many1] *)
 let _co21 = satisfy_many1
+
+
+(** [sep_by1] *)
+let _co22 = sep_by1
+
+
+(** [sep_by1_trailing] *)
+let _co23 = sep_by1_trailing
 
 
 (* ── Derived combinators (Data.Codec.fst) ── *)
