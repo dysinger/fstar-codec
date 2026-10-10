@@ -3920,3 +3920,213 @@ let sep_by1_opt_trailing (#a:Type) (c: codec a) (sep: codec unit) (max: nat) : c
   dec_consumed_bound = (fun s -> sep_by1_opt_trailing_dec_consumed_bound c sep max s);
 }
 #pop-options
+
+
+(** Combinator 26: opt_prefixed — a DELIMITER-PREFIXED optional.
+
+    The missing "present iff a delimiter byte leads, absent = zero bytes"
+    primitive.  RFC 3986-style optional components ([#]fragment, [?]query,
+    [//]authority) are present exactly when their leading delimiter byte
+    appears; an ABSENT component encodes to the EMPTY sequence (no tag byte,
+    unlike [optional]'s [sum]).
+
+    [p] is the first-byte predicate of the delimiter (e.g. [is_hash_byte]),
+    [delim] the delimiter codec (e.g. [byte_val 0x23uy]), and [c] the payload.
+
+      enc (Some x) = delim.enc () ++ c.enc x
+      enc None     = empty
+
+    The decoder PEEKS the first byte: if [p] holds it parses [delim] then [c]
+    (returning [Some]); otherwise it returns [None] consuming ZERO bytes.
+    [wfcv (Some x)] requires [p (Seq.index (delim.enc ()) 0)] so the encoder's
+    leading byte dispatches correctly; [rest_cond None r] requires [r] to be
+    empty or NOT start with a [p] byte (else the decoder would mis-parse the
+    suffix as a present delimiter). *)
+
+
+(** [opt_prefixed_enc] — encode an optional delimiter-prefixed value. *)
+let opt_prefixed_enc (#a:Type) (delim: codec unit) (c: codec a) (v: option a) : Tot byte_seq =
+  match v with
+  | None -> Seq.empty
+  | Some x -> delim.enc () `Seq.append` c.enc x
+
+
+(** [opt_prefixed_dec_aux] — decode [delim] then [c], returning [Some x]. *)
+let opt_prefixed_dec_some (#a:Type) (delim: codec unit) (c: codec a) (s: byte_seq)
+  : Tot (decode_result (option a)) =
+  match delim.dec s with
+  | Inl err -> Inl err
+  | Inr ((), nd) ->
+      if nd > Seq.length s
+      then Inl (mk_decode_error UnexpectedEndOfInput (Seq.length s))
+      else
+        let rest = Seq.slice s nd (Seq.length s) in
+        (match c.dec rest with
+         | Inl err -> Inl ({ err with err_pos = err.err_pos + nd })
+         | Inr (x, nc) -> Inr (Some x, nd + nc))
+
+
+(** [opt_prefixed_dec] — peek-dispatched optional decoder. *)
+let opt_prefixed_dec (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (s: byte_seq)
+  : Tot (decode_result (option a)) =
+  if Seq.length s < 1
+  then Inr (None, 0)
+  else
+    let b0 = Seq.index s 0 in
+    if p b0
+    then opt_prefixed_dec_some delim c s
+    else Inr (None, 0)
+
+
+(** [opt_prefixed_wfcv] — well-formedness for the optional. *)
+let opt_prefixed_wfcv (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (v: option a) : Tot bool =
+  match v with
+  | None -> true
+  | Some x ->
+      let de = delim.enc () in
+      c.wfcv x && delim.wfcv () &&
+      Seq.length de > 0 && p (Seq.index de 0)
+
+
+(** [opt_prefixed_wfcv_prop] — propositional well-formedness. *)
+let opt_prefixed_wfcv_prop (#a:Type) (delim: codec unit) (c: codec a) (v: option a) : prop =
+  match v with None -> True | Some x -> c.wfcv_prop x /\ delim.wfcv_prop ()
+
+
+(** [opt_prefixed_rest_cond] — suffix condition.  [Some x]: the payload's own
+    rest condition.  [None]: the suffix must be empty or begin with a byte [p]
+    REJECTS (so the decoder returns [None] rather than mis-reading a present
+    delimiter). *)
+let opt_prefixed_rest_cond (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (v: option a) (r: byte_seq) : prop =
+  match v with
+  | Some x ->
+      c.rest_cond x r /\
+      delim.rest_cond () (c.enc x `Seq.append` r)
+  | None -> Seq.length r = 0 \/ (Seq.length r > 0 /\ not (p (Seq.index r 0)))
+
+
+(** [opt_prefixed_roundtrip] — roundtrip proof for [opt_prefixed]. *)
+#push-options "--z3rlimit 200"
+let opt_prefixed_roundtrip (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a)
+  (v: option a) (r: byte_seq) : Lemma
+  (requires
+    opt_prefixed_wfcv p delim c v /\
+    opt_prefixed_wfcv_prop delim c v /\
+    opt_prefixed_rest_cond p delim c v r)
+  (ensures
+    opt_prefixed_dec p delim c (opt_prefixed_enc delim c v `Seq.append` r)
+      == Inr (v, Seq.length (opt_prefixed_enc delim c v)))
+  = match v with
+    | None ->
+        if Seq.length r = 0 then ()
+        else (assert (Seq.length r > 0 /\ not (p (Seq.index r 0))))
+    | Some x ->
+        assert (c.wfcv x);
+        assert (c.wfcv_prop x);
+        assert (delim.wfcv ());
+        assert (delim.wfcv_prop ());
+        assert (Seq.length (delim.enc ()) > 0);
+        assert (p (Seq.index (delim.enc ()) 0));
+        assert (c.rest_cond x r);
+        assert (delim.rest_cond () (c.enc x `Seq.append` r));
+        let payload = c.enc x `Seq.append` r in
+        let full = delim.enc () `Seq.append` payload in
+        Seq.lemma_len_append (delim.enc ()) payload;
+        Seq.lemma_index_app1 (delim.enc ()) payload 0;
+        assert (Seq.index full 0 == Seq.index (delim.enc ()) 0);
+        assert (p (Seq.index full 0));
+        delim.roundtrip () payload;
+        assert (delim.dec full == Inr ((), Seq.length (delim.enc ())));
+        let rest = Seq.slice full (Seq.length (delim.enc ())) (Seq.length full) in
+        lemma_slice_after_prefix (delim.enc ()) payload;
+        assert (rest == payload);
+        c.roundtrip x r;
+        assert (c.dec payload == Inr (x, Seq.length (c.enc x)));
+        assert (opt_prefixed_dec_some delim c full == Inr (Some x, Seq.length (delim.enc ()) + Seq.length (c.enc x)));
+        Seq.lemma_len_append (delim.enc ()) (c.enc x);
+        assert (opt_prefixed_dec p delim c full == Inr (Some x, Seq.length (opt_prefixed_enc delim c v)));
+        Seq.append_assoc (delim.enc ()) (c.enc x) r;
+        ()
+#pop-options
+
+
+(** [opt_prefixed_dec_err_bound] — error-position bound for the optional decoder. *)
+#push-options "--z3rlimit 120"
+let opt_prefixed_dec_err_bound (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (s: byte_seq) : Lemma
+  (ensures (match opt_prefixed_dec p delim c s with Inl err -> err.err_pos <= Seq.length s | _ -> True))
+  = if Seq.length s < 1 then ()
+    else if p (Seq.index s 0) then begin
+      (match delim.dec s with
+       | Inl err -> delim.dec_err_bound s
+       | Inr ((), nd) ->
+           if nd > Seq.length s then ()
+           else begin
+             let rest = Seq.slice s nd (Seq.length s) in
+             (match c.dec rest with
+              | Inl err -> c.dec_err_bound rest
+              | Inr _ -> ())
+           end)
+    end else ()
+#pop-options
+
+
+(** [opt_prefixed_dec_consumed_bound] — consumed-bytes bound for the optional. *)
+#push-options "--z3rlimit 120"
+let opt_prefixed_dec_consumed_bound (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (s: byte_seq) : Lemma
+  (ensures (match opt_prefixed_dec p delim c s with Inr (_, n) -> n <= Seq.length s | _ -> True))
+  = if Seq.length s < 1 then ()
+    else if p (Seq.index s 0) then begin
+      (match delim.dec s with
+       | Inl _ -> ()
+       | Inr ((), nd) ->
+           if nd > Seq.length s then ()
+           else begin
+             let rest = Seq.slice s nd (Seq.length s) in
+             delim.dec_consumed_bound s;
+             (match c.dec rest with
+              | Inl _ -> ()
+              | Inr (_, nc) -> c.dec_consumed_bound rest)
+           end)
+    end else ()
+#pop-options
+
+
+(** [opt_prefixed] — combinator 26: the delimiter-prefixed optional. *)
+#push-options "--z3rlimit 200"
+let opt_prefixed (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) : codec (option a) = {
+  enc       = (fun v -> opt_prefixed_enc delim c v);
+  dec       = (fun s -> opt_prefixed_dec p delim c s);
+  wfcv      = (fun v -> opt_prefixed_wfcv p delim c v);
+  wfcv_prop = (fun v -> opt_prefixed_wfcv_prop delim c v);
+  rest_cond = (fun v r -> opt_prefixed_rest_cond p delim c v r);
+  roundtrip = (fun v r -> opt_prefixed_roundtrip p delim c v r);
+  dec_err_bound = (fun s -> opt_prefixed_dec_err_bound p delim c s);
+  dec_consumed_bound = (fun s -> opt_prefixed_dec_consumed_bound p delim c s);
+}
+#pop-options
+
+
+(** Accessor lemmas for [opt_prefixed] — export the opaque `noeq type` record
+    field equalities (fstar-proofs §18) so downstream consumers can reason
+    about [(opt_prefixed p delim c).wfcv/.rest_cond/.enc/.dec].  Each body is
+    [()] because the equality is definitional in the defining module. *)
+
+let lemma_opt_prefixed_wfcv_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (v: option a) : Lemma
+  ((opt_prefixed p delim c).wfcv v == opt_prefixed_wfcv p delim c v)
+  = ()
+
+let lemma_opt_prefixed_wfcv_prop_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (v: option a) : Lemma
+  ((opt_prefixed p delim c).wfcv_prop v == opt_prefixed_wfcv_prop delim c v)
+  = ()
+
+let lemma_opt_prefixed_rest_cond_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (v: option a) (r: byte_seq) : Lemma
+  ((opt_prefixed p delim c).rest_cond v r == opt_prefixed_rest_cond p delim c v r)
+  = ()
+
+let lemma_opt_prefixed_enc_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (v: option a) : Lemma
+  ((opt_prefixed p delim c).enc v == opt_prefixed_enc delim c v)
+  = ()
+
+let lemma_opt_prefixed_dec_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (s: byte_seq) : Lemma
+  ((opt_prefixed p delim c).dec s == opt_prefixed_dec p delim c s)
+  = ()
