@@ -4130,3 +4130,4 @@ let lemma_opt_prefixed_enc_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c
 let lemma_opt_prefixed_dec_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (s: byte_seq) : Lemma
   ((opt_prefixed p delim c).dec s == opt_prefixed_dec p delim c s)
   = ()
+
