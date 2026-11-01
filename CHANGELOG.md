@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Split `Data.Codec.Types` into a format-agnostic core plus a new
+  `Data.Codec.Text` module holding the ASCII text leaves (`text`,
+  `string_to_bytes`, `string_is_ascii`), the byte predicates (`is_upper` …
+  `is_printable`, `char_to_byte`), the `char_is_*` family, and `digit_byte`.
+  The public surface is unchanged: `Data.Codec` re-exports all three modules,
+  and all seven downstream consumers rebuild with **zero source changes**.
+  `Types` 4133 → 4082 lines; `Data.Codec` 244 → 140.  Behaviour is identical
+  (`text` remains ASCII-only; AUDIT §2a is untouched).  A `Data.Codec.Binary`
+  split was evaluated and deferred — the Pulse `codec_t` dispatcher depends on
+  the integer leaves, so they cannot move until that dispatcher is split.
+
 ### Added
 
 - `satisfy_many0` / `satisfy_many1` — variable-width predicate-run combinators

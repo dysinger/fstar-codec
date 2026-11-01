@@ -38,6 +38,7 @@ let
 
   pure-modules = [
     "Data.Codec.Types"
+    "Data.Codec.Text"
     "Data.Codec"
   ];
 
@@ -210,7 +211,7 @@ let
       cp ${fstar-checked}/*.checked cache/ 2>/dev/null || true
       # Verify in dependency order into a cache so cross-module inlining
       # (Error 317) can find our own modules' `.checked` files.
-      for m in Data.Codec.Types Data.Codec Data.Codec.Pulse; do
+      for m in Data.Codec.Types Data.Codec.Text Data.Codec Data.Codec.Pulse; do
         ${fstar-exe} \
           --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src \
           --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
@@ -271,7 +272,7 @@ let
         PULSE_INCS="$PULSE_INCS --include $d"
       done
       cp ${fstar-checked}/*.checked cache/ 2>/dev/null || true
-      for m in Data.Codec.Types Data.Codec Data.Codec.Pulse; do
+      for m in Data.Codec.Types Data.Codec.Text Data.Codec Data.Codec.Pulse; do
         ${fstar-exe} \
           --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src \
           --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \

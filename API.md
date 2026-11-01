@@ -10,8 +10,10 @@ roundtrip, dec_err_bound, dec_consumed_bound
 - [error_code] — sum type of parse errors
 - [decode_error] — error record with position and optional label
 - [decode_result a] — either an error or a value + bytes consumed
-Leaf: token, byte_val, satisfy, pure, text, bytes, uint8,
+Leaf: token, byte_val, satisfy, pure, bytes, uint8,
 word16be, word16le, word32be, word32le, varint, digits_to_int
+Text leaves (text, string_to_bytes, string_is_ascii, is_*, char_is_*,
+digit_byte) live in Data.Codec.Text.
 Combinator: custom, product, sum, map_, count, label, alt,
 satisfy_many0, satisfy_many1
 All lemmas are called explicitly in roundtrip proofs.  SMTPat is used
@@ -506,6 +508,22 @@ Alias: [many1].
 | Parameter | Description |
 |-----------|-------------|
 | `f` | Predicate each run byte must satisfy. |
+
+---
+
+# Data.Codec.Text
+
+Data.Codec.Text — ASCII text codecs and character predicates.
+This module depends only on the format-agnostic core (Data.Codec.Types).
+Behaviour is unchanged from the pre-split Data.Codec.Types definition: text
+is ASCII-only and its wfcv rejects non-ASCII strings via string_is_ascii.
+
+- [text] — a fixed ASCII string (codec unit)
+- [string_to_bytes] / [string_is_ascii] — string <-> byte_seq bridge + guard
+- [is_upper], [is_lower], [is_alpha], [is_alphanum], [is_space_or_tab],
+  [is_whitespace], [is_printable] — byte predicates
+- [char_to_byte] + [char_is_*] — ASCII char predicates
+- [digit_byte] — a single ASCII digit byte (satisfy is_digit)
 
 ---
 

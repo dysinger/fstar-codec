@@ -139,10 +139,6 @@ type codec (a: Type) = {
 }
 
 
-(** Length of the encoding of value [v] under codec [c]. *)
-let len_of_enc (#a:Type) (c: codec a) (v: a) : GTot nat = Seq.length (c.enc v)
-
-
 (** pow2 *)
 #push-options "--z3rlimit 40"
 (* pow2 returns int (not nat) because callers use it in varint arithmetic
@@ -157,24 +153,8 @@ let rec pow2 (n: nat) : Tot int (decreases n) =
 #pop-options
 
 
-(** string_to_bytes *)
-let string_to_bytes (s: string) : Tot byte_seq =
-
-
-  (* ASCII-only: code points > 255 are truncated via % 256.
-     This library does not handle Unicode. Use string_is_ascii to guard. *)
-  seq_of_list (FStar.List.Tot.map (fun (c: FStar.Char.char) ->
-    U8.uint_to_t (FStar.Char.int_of_char c % 256))
-    (FStar.String.list_of_string s))
-
-
-(** string_is_ascii: true iff every character in s has code point < 128.
-
-    Use as wfcv guard for text combinators to prevent silent truncation. *)
-let string_is_ascii (s: string) : Tot bool =
-  FStar.List.Tot.for_all (fun (c: FStar.Char.char) ->
-    FStar.Char.int_of_char c < 128
-  ) (FStar.String.list_of_string s)
+(** Length of the encoding of value [v] under codec [c]. *)
+let len_of_enc (#a:Type) (c: codec a) (v: a) : GTot nat = Seq.length (c.enc v)
 
 
 (** bytes_decode *)
@@ -1078,36 +1058,6 @@ let pure (#a:Type) (x: a) : codec a = {
 #pop-options
 
 
-(** Combinator 5: text — a fixed ASCII string.
-
-    @param s The expected string (ASCII only).
-    Encodes as [string_to_bytes s].  Decodes exactly [n] bytes and
-    compares with [string_to_bytes s].  Fails with [ExpectedEndOfInput]
-    if input is too short, [ExpectedText] on mismatch.
-    wfcv requires [string_is_ascii s]. *)
-#push-options "--z3rlimit 40"
-let text (s: string) : codec unit = {
-  enc       = (fun () -> string_to_bytes s);
-  dec       = (fun input ->
-    let expected = string_to_bytes s in
-    let n = Seq.length expected in
-    if Seq.length input < n then
-      Inl (mk_decode_error ExpectedEndOfInput (Seq.length input))
-    else if Seq.eq (Seq.slice input 0 n) expected then
-      Inr ((), n)
-    else Inl (mk_decode_error ExpectedText 0));
-  wfcv      = (fun _ -> string_is_ascii s);
-  wfcv_prop = (fun _ -> True);
-  rest_cond = (fun _ _ -> True);
-  roundtrip = (fun v r ->
-    let b = string_to_bytes s in
-    Seq.lemma_len_append b r;
-    lemma_slice_append_prefix b r;
-    ());
-  dec_err_bound = (fun s -> ());
-  dec_consumed_bound = (fun s -> ());
-}
-#pop-options
 
 
 (** Combinator 6: bytes — a fixed byte sequence.
@@ -4130,4 +4080,3 @@ let lemma_opt_prefixed_enc_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c
 let lemma_opt_prefixed_dec_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (s: byte_seq) : Lemma
   ((opt_prefixed p delim c).dec s == opt_prefixed_dec p delim c s)
   = ()
-

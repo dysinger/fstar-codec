@@ -41,7 +41,7 @@ FSTAR_FLAGS = --no_default_includes \
 # Data.Codec.Pulse is back in: it was rewritten in Pulse (see AGENTS.md) and
 # verifies/extracts to C11/OCaml/F# (Custard).  The three test modules (Roundtrip pure +
 # Integration anchors + Pulse buffer roundtrips) are wired into TST_MODS below.
-SRC_MODS := Data.Codec.Types Data.Codec Data.Codec.Pulse
+SRC_MODS := Data.Codec.Types Data.Codec.Text Data.Codec Data.Codec.Pulse
 
 # Pulse-only modules skip re-verification (they ship pre-verified in the F*
 # install); Data.Codec.Pulse opens Pulse.Lib.* which would otherwise time out

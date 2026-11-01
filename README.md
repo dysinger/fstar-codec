@@ -70,9 +70,18 @@ compile to C for use at the byte-buffer level.
 
 | Module | Role |
 |--------|------|
-| `Data.Codec.Types` | The `codec a` record, the base combinators, their lemmas. |
-| `Data.Codec` | Derived combinators, operator aliases, character predicates. |
+| `Data.Codec.Types` | Format-agnostic core: the `codec a` record, the structural combinators, and the leaves the Pulse dispatcher depends on. |
+| `Data.Codec.Text` | ASCII text leaves: `text`, `string_to_bytes`/`string_is_ascii`, the `is_*`/`char_is_*` predicates, `digit_byte`. |
+| `Data.Codec` | Facade: `include`s `Types` + `Text`, plus derived combinators and operator aliases. |
 | `Data.Codec.Pulse` | C-extractable leaf codecs (8 types), buffer I/O, roundtrip lemmas. |
+
+**Module scope rule.** `Data.Codec.Types` is the *core*: it must not acquire a
+dependency on `Data.Codec.Text`, and it holds no text handling.  Anything that
+names a character, a string, or an ASCII predicate belongs in `Data.Codec.Text`.
+The machine-specific integer/varint leaves still live in core because the Pulse
+C dispatcher (`Data.Codec.Pulse`, `codec_t`) names them directly through
+`module DC = Data.Codec.Types`; separating them requires splitting that
+dispatcher.  See `AUDIT.md` §2/§2a and `lean-codec`'s `[S3]` scope rule.
 
 Test modules (verified, not extracted):
 
@@ -117,8 +126,9 @@ lemmas) that compiles to C11, OCaml, and F#.
 ## Architecture
 
 ```
-Data.Codec.Types     — codec record, 22 combinators, all lemmas
-Data.Codec           — derived combinators, operator aliases, char predicates
+Data.Codec.Types     — format-agnostic core: codec record, combinators, lemmas
+Data.Codec.Text      — ASCII text leaves + character predicates
+Data.Codec           — facade (include Types + Text) + derived combinators
 Data.Codec.Pulse     — C-extractable leaf codecs (Pulse fn, C/OCaml/F# output)
 ```
 
