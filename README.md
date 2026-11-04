@@ -54,17 +54,26 @@ compile to C for use at the byte-buffer level.
 - **Twenty-two combinators.**  Primitives (`token`, `byte_val`, `satisfy`,
   `pure`, `text`, `bytes`, `uint8`, `word16be`, `word16le`, `word32be`,
   `word32le`, `varint`, `digits_to_int`) plus combinators (`custom`, `product`,
-  `sum`, `map_`, `count`, `label`, `alt`) and the variable-width predicate runs
-  (`satisfy_many0`, `satisfy_many1`), plus the operator aliases (`<|>`, `*>`,
-  `<*`).  The ad-hoc helpers `one_of` and `take_until` return (enc, dec, wfcv)
-  triples, not `codec` records.
+  `sum`, `map_`, `count`, `label`, `alt`), the variable-width predicate runs
+  (`satisfy_many0`, `satisfy_many1`), and the separator family (`sep_by1`,
+  `sep_by1_trailing`, `sep_by1_opt_trailing`, `opt_prefixed`) — plus the
+  operator aliases (`<|>`, `*>`, `<*`).  The ad-hoc helpers `one_of` and
+  `take_until` return (enc, dec, wfcv) triples, not `codec` records.
+  (⚠ the count is a maintained claim, not a derived one — `AUDIT.md` owns the
+  recount.)
 - **Proven roundtrips.**  Every combinator carries a lemma; no `admit`, no
   `assume`, no `admit_smt_queries` (the anchor test module uses a scoped,
   semantically-neutral `--admit_smt_queries true` — see `AGENTS.md`).
 - **C extraction.**  The Pulse leaf codecs extract to C with byte-level
   post-conditions.
-- **A real test suite.**  118 pure roundtrip/error-path tests plus 10 Pulse
+- **A real test suite.**  121 pure roundtrip/error-path tests plus 10 Pulse
   buffer tests, all verified.
+- **A strict-isomorphism core type in progress.**  `codec_v2` (alias
+  "Amendment 6") makes the two directions *mutually* constraining
+  (`law_fwd` + `law_bwd`) instead of a one-way conditional roundtrip.  It is
+  defined in `Data.Codec.Types` and fully spike-proved for `token`, `product`,
+  `alt`, `sep_by1` and a greedy run codec, but **no combinator uses it yet** —
+  see `openspec/changes/codec-strict-isomorphism`.
 
 ## Modules
 

@@ -12,18 +12,25 @@ returning codec records — no GADT, no n, no mutual recursion.
 @header Data.Codec.Types
 
 @section Types
-- [codec a] — 8-field record: enc, dec, wfcv, wfcv_prop, rest_cond,
-  roundtrip, dec_err_bound, dec_consumed_bound
+- [codec a] — the legacy 8-field record: enc, dec, wfcv, wfcv_prop,
+  rest_cond, roundtrip, dec_err_bound, dec_consumed_bound
+- [codec_v2 a] — the strict partial isomorphism (Amendment 6): enc, dec,
+  wfcv, rest_cond, rest_cond_v, law_fwd, law_bwd.  Coexistence only; no
+  combinator uses it yet.
 - [error_code] — sum type of parse errors
 - [decode_error] — error record with position and optional label
 - [decode_result a] — either an error or a value + bytes consumed
 
-@section Combinators (22 total)
-Leaf: token, byte_val, satisfy, pure, text, bytes, uint8,
+@section Combinators
+Leaf: token, byte_val, satisfy, pure, uint8,
        word16be, word16le, word32be, word32le, varint, digits_to_int
 Combinator: custom, product, sum, map_, count, label, alt,
-            satisfy_many0, satisfy_many1, take_until
+            satisfy_many0, satisfy_many1, take_until, sep_by1,
+            sep_by1_trailing, sep_by1_opt_trailing, opt_prefixed
 Helpers (not codecs): one_of (returns an ad-hoc triple)
+
+⚠️ `text`, `bytes` and the ASCII predicates live in [Data.Codec.Text]
+(module split, `fstar-codec` 0fdade0).  This module must NOT depend on it.
 
 @section Lemmas
 All lemmas are called explicitly in roundtrip proofs.  SMTPat is used
@@ -33,7 +40,9 @@ lemma_seq_cons_append).
 @section Proofs
 Every combinator carries its own roundtrip, dec_err_bound, and
 dec_consumed_bound proof.  Z3 rlimits are kept ≤ 120 via structural
-decomposition.  Zero admits across all 23 combinators.  The [one_of] helper
+decomposition (two exceptions, both documented in place:
+`sep_by1_opt_trailing_roundtrip` and the `take_until` induction).  Zero
+admits module-wide.  The [one_of] helper
 returns an ad-hoc (enc, dec, wfcv) triple (its roundtrip is proven
 per-instantiation for a concrete literal set); [take_until] is a genuine
 [codec (list byte)] with a generic 0-admit roundtrip — see their NOTEs.
@@ -4080,3 +4089,112 @@ let lemma_opt_prefixed_enc_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c
 let lemma_opt_prefixed_dec_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (s: byte_seq) : Lemma
   ((opt_prefixed p delim c).dec s == opt_prefixed_dec p delim c s)
   = ()
+
+
+(* ⚠️ PLACEMENT CONSTRAINT — do not move this block earlier in the file.
+
+   [codec_v2] MUST be declared after [sep_by1_opt_trailing_roundtrip] (~line
+   3803).  That lemma runs at [--z3rlimit 800 --fuel 16 --ifuel 8] and is
+   SMT-fragile: declaring [codec_v2] — specifically its [law_bwd], which
+   introduces an `exists` binder — BEFORE it makes the roundtrip obligation
+   unprovable (Error 19: "Subtyping check failed" on the
+   [sep_by1_opt_trailing_dec] goal), and raising the rlimit to 1600 does NOT
+   help.
+
+   This was bisected, not guessed:
+     * a trivial definition, or a simple 3-field record, inserted at the same
+       spot: PASSES  -> it is not mere line-shifting;
+     * [remainder] alone, or [codec_v2] with [law_bwd] deleted: PASSES
+       -> the trigger is [law_bwd]'s existential;
+     * [codec_v2] with [law_bwd], before that lemma: FAILS; after it: PASSES.
+   Consistent with AGENTS.md's note that this region is position-sensitive in
+   ways SMTPat reasoning does not explain.  Re-verify if you move anything here. *)
+
+(** [remainder] — the bytes left over after a strict decode.  The refinement
+    [Seq.length r <= Seq.length s] is what makes [law_bwd] stateable: a decoder
+    cannot invent bytes it did not consume. *)
+let remainder (s: byte_seq) = r:byte_seq{ Seq.length r <= Seq.length s }
+
+
+(** [codec_v2 a] — the STRICT PARTIAL ISOMORPHISM type ("Amendment 6").
+
+    This is the target type of `openspec/changes/codec-strict-isomorphism`.
+    It coexists with [codec] above during migration (M2/T3.x); no existing
+    combinator uses it yet.
+
+    Why a second type rather than changing [codec] in place:
+    - [codec] states only `dec (enc v ++ r) == Inr (v, |enc v|)` — the
+      forward direction — with a one-way *conditional* guard
+      ([wfcv] / [wfcv_prop] / [rest_cond]).  Nothing relates [enc] to a [dec]
+      result in the converse direction (`research.md` F0 / T0.1).
+    - [codec_v2] constrains BOTH directions.  [law_bwd] says: if the decoder
+      succeeds, the consumed prefix IS the encoding of the value it recovered.
+      Together the two laws make a codec a partial isomorphism.
+
+    Three deliberate design points, each machine-justified in the change's
+    spike suite (`spike-*.fst`, 11 modules, 0 admit):
+
+    1. **Partiality is [option], both ways.**  [enc] may fail and [dec] may
+       fail; neither is total.  This is why the record is a *partial*
+       isomorphism rather than a bijection.
+
+    2. **Two side conditions, split BY DIRECTION.**  This is the crux
+       (`research.md` F25).  A single value-indexed predicate used by both
+       laws is circular (it was Design B″: [law_bwd] would need the encoding
+       of the value it is still recovering).  A single value-free predicate is
+       Amendment 5 and cannot discharge [sep_by1]'s forward law.  So:
+         - [rest_cond_v] is value-indexed and is consumed by [law_fwd] ONLY —
+           the forward direction has the value in hand.
+         - [rest_cond] is value-free and is what [law_bwd] would use; today
+           [law_bwd] needs no side condition at all, and really does not
+           mention [rest_cond_v].
+
+    3. **[remainder]-returning [dec].**  A prefix codec must report HOW MUCH it
+       consumed; returning a bare value cannot express that, and Design A
+       (option-valued [unapply]) is provably impossible for byte codecs
+       (`research.md` F3).
+
+    Quantified over [eqtype] (F5/F10): every downstream value type is a
+    record/list/option of [string]/[int]/[byte], so the restriction is free.
+
+    ⚠ Migration status: only [token], [product], [alt], [sep_by1] and a greedy
+    [satisfy_many0]-shaped codec are spike-proved against this exact record.
+    [sum], [map_] and [count] are unproven under it (T2.11/T2.12).  Do not
+    assume a combinator's laws transfer from the spike. *)
+noeq
+type codec_v2 (a: eqtype) = {
+  enc         : a -> Tot (option byte_seq);
+
+  dec         : (s: byte_seq) -> Tot (option (a & remainder s));
+
+  wfcv        : a -> Tot bool;
+
+  rest_cond   : byte_seq -> Tot prop;
+
+  rest_cond_v : a -> byte_seq -> Tot prop;
+
+  (** FORWARD: encode then decode recovers the value, and the trailing
+      suffix is returned untouched.  Consumes the value-indexed side
+      condition because it has the value. *)
+  law_fwd : (x: a) -> (e: byte_seq) -> (r: byte_seq) -> Lemma
+    (requires wfcv x = true /\ enc x = Some e /\ rest_cond_v x r)
+    (ensures dec (Seq.append e r) = Some (x, r));
+
+  (** BACKWARD: whatever the decoder consumed IS the encoding of the value it
+      recovered.  Consumes NO side condition — the value is the unknown here,
+      which is exactly why it must not be value-indexed. *)
+  law_bwd : (s: byte_seq) -> (v: a) -> (r: remainder s) -> Lemma
+    (requires dec s = Some (v, r))
+    (ensures (exists (e: byte_seq). enc v = Some e /\ s == Seq.append e r));
+}
+
+
+(** [lemma_split_head] — [s] as its head byte followed by the rest.
+    Needed by every [law_bwd] that decodes a single leading byte (e.g.
+    [token]): the law must witness the encoding as the consumed prefix, which
+    means splitting the input at the point the decoder stopped. *)
+let lemma_split_head (s: byte_seq) : Lemma
+  (requires Seq.length s >= 1)
+  (ensures s == Seq.cons (Seq.index s 0) (Seq.slice s 1 (Seq.length s)))
+  = Seq.lemma_eq_intro s
+      (Seq.cons (Seq.index s 0) (Seq.slice s 1 (Seq.length s)))
