@@ -72,8 +72,12 @@ compile to C for use at the byte-buffer level.
   "Amendment 6") makes the two directions *mutually* constraining
   (`law_fwd` + `law_bwd`) instead of a one-way conditional roundtrip.  It is
   defined in `Data.Codec.Types` and fully spike-proved for `token`, `product`,
-  `alt`, `sep_by1` and a greedy run codec, but **no combinator uses it yet** —
-  see `openspec/changes/codec-strict-isomorphism`.
+  `alt`, `sum`, `sep_by1`, positional `count`, `map_` and a greedy run codec,
+  but **no combinator uses it yet** —
+  see `openspec/changes/codec-strict-isomorphism`.  ⚠ The `_v2` suffix is a
+  **temporary coexistence name**: the migration collapses the two types, so
+  this type will be renamed `codec` and the legacy record deleted.  Do not
+  depend on the name.
 
 ## Modules
 

@@ -16,7 +16,8 @@ returning codec records — no GADT, no n, no mutual recursion.
   rest_cond, roundtrip, dec_err_bound, dec_consumed_bound
 - [codec_v2 a] — the strict partial isomorphism (Amendment 6): enc, dec,
   wfcv, rest_cond, rest_cond_v, law_fwd, law_bwd.  Coexistence only; no
-  combinator uses it yet.
+  combinator uses it yet.  ⚠ `_v2` is a TEMPORARY name — Phase 5 deletes the
+  legacy [codec] and renames this one to [codec].  See the record's doc.
 - [error_code] — sum type of parse errors
 - [decode_error] — error record with position and optional label
 - [decode_result a] — either an error or a value + bytes consumed
@@ -4118,9 +4119,24 @@ let remainder (s: byte_seq) = r:byte_seq{ Seq.length r <= Seq.length s }
 
 (** [codec_v2 a] — the STRICT PARTIAL ISOMORPHISM type ("Amendment 6").
 
-    This is the target type of `openspec/changes/codec-strict-isomorphism`.
-    It coexists with [codec] above during migration (M2/T3.x); no existing
-    combinator uses it yet.
+    ⚠️ **`_v2` IS A TEMPORARY COEXISTENCE NAME, NOT THE PERMANENT ONE.**
+    This type is intended to *become* [codec].  The end state (Phase 5 of
+    `openspec/changes/codec-strict-isomorphism`) is:
+
+        T5.1  delete the legacy [codec] record above
+        T5.2  rename [codec_v2] -> [codec]      <-- the suffix disappears
+        T5.3  drop [of_codec_v2] (or keep it as a deprecated no-op)
+        T5.4  make check green, 0 admit, 27 derivations intact
+
+    So do NOT build anything that depends on this type being called
+    `codec_v2`, and do not introduce *another* versioned name; there is no
+    `codec_v3` planned and the migration is a collapse, not a VCS history.
+    The suffix exists purely so the two records can coexist while combinators
+    migrate one at a time (`codec` and `codec_v2` cannot be the same name
+    during that window).
+
+    It currently coexists with [codec] above (M2/T3.x); no combinator uses it
+    yet.
 
     Why a second type rather than changing [codec] in place:
     - [codec] states only `dec (enc v ++ r) == Inr (v, |enc v|)` — the
