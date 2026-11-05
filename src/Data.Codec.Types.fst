@@ -4148,7 +4148,7 @@ let remainder (s: byte_seq) = r:byte_seq{ Seq.length r <= Seq.length s }
       Together the two laws make a codec a partial isomorphism.
 
     Three deliberate design points, each machine-justified in the change's
-    spike suite (`spike-*.fst`, 11 modules, 0 admit):
+    spike suite (`spike-*.fst`, 14 modules + 1 asserted refutation, 0 admit):
 
     1. **Partiality is [option], both ways.**  [enc] may fail and [dec] may
        fail; neither is total.  This is why the record is a *partial*
@@ -4173,10 +4173,14 @@ let remainder (s: byte_seq) = r:byte_seq{ Seq.length r <= Seq.length s }
     Quantified over [eqtype] (F5/F10): every downstream value type is a
     record/list/option of [string]/[int]/[byte], so the restriction is free.
 
-    ⚠ Migration status: only [token], [product], [alt], [sep_by1] and a greedy
-    [satisfy_many0]-shaped codec are spike-proved against this exact record.
-    [sum], [map_] and [count] are unproven under it (T2.11/T2.12).  Do not
-    assume a combinator's laws transfer from the spike. *)
+    ⚠ Migration status: `token`, `product`, `alt`, `sep_by1`, greedy
+    `satisfy_many0`, `count`, `map_` (with `map_retract_on_image`) and `sum`
+    are spike-proved against this exact record, both laws (see
+    `research.md` F27/F28 in the `codec-strict-isomorphism` change).  The
+    remaining leaves and the `sep_by1*` / `opt_prefixed` variants have
+    transcription verdicts only (`t0.3-table.md`); each needs its own spike
+    before its instance is claimed.  Do not assume a combinator's laws
+    transfer from the spike. *)
 noeq
 type codec_v2 (a: eqtype) = {
   enc         : a -> Tot (option byte_seq);
