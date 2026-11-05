@@ -4148,7 +4148,7 @@ let remainder (s: byte_seq) = r:byte_seq{ Seq.length r <= Seq.length s }
       Together the two laws make a codec a partial isomorphism.
 
     Three deliberate design points, each machine-justified in the change's
-    spike suite (`spike-*.fst`, 14 modules + 1 asserted refutation, 0 admit):
+    spike suite (`spike-*.fst`, 15 modules + 2 asserted refutations, 0 admit):
 
     1. **Partiality is [option], both ways.**  [enc] may fail and [dec] may
        fail; neither is total.  This is why the record is a *partial*
@@ -4176,11 +4176,16 @@ let remainder (s: byte_seq) = r:byte_seq{ Seq.length r <= Seq.length s }
     ⚠ Migration status: `token`, `product`, `alt`, `sep_by1`, greedy
     `satisfy_many0`, `count`, `map_` (with `map_retract_on_image`) and `sum`
     are spike-proved against this exact record, both laws (see
-    `research.md` F27/F28 in the `codec-strict-isomorphism` change).  The
-    remaining leaves and the `sep_by1*` / `opt_prefixed` variants have
-    transcription verdicts only (`t0.3-table.md`); each needs its own spike
-    before its instance is claimed.  Do not assume a combinator's laws
-    transfer from the spike. *)
+    `research.md` F27/F28 in the `codec-strict-isomorphism` change).  Of the
+    LEAVES, `byte_val`, `satisfy`, `uint8` and `pure` now also have both laws
+    (`research.md` F37): `pure`'s value-dependent guard folds to
+    `wfcv v := (v == x)` and needs no extra hypothesis — a deletion test shows
+    the fold is load-bearing.  `bytes`, `varint`, `digits_to_int`, `text` and
+    the `word16*`/`word32*` leaves are NOT yet proved: their decoders must be
+    restated from a consumed COUNT to a REMAINDER, which is the open work
+    (T1.7).  The `sep_by1*` / `opt_prefixed` variants have transcription
+    verdicts only (`t0.3-table.md`); each needs its own spike before its
+    instance is claimed.  Do not assume a combinator's laws transfer. *)
 noeq
 type codec_v2 (a: eqtype) = {
   enc         : a -> Tot (option byte_seq);
