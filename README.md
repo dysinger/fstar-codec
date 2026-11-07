@@ -88,8 +88,52 @@ sum types, no allocation, `u32` offsets over a caller-owned buffer.  Dropping an
 | **[D9]** | the laws are **conditional** | The central departure. See the dedicated section below. |
 | **[D10]** | the carrier is **`Seq byte`** plus a refined remainder | Three independent reasons: `Seq` has 93 lemmas behind it, so laws reduce; Custard consumes `Pulse.Lib.Array.array U8.t` through `pts_to` views and `u32` offsets, so a `Seq` can never be the runtime carrier; and every Pulse post-condition and downstream consumer is already stated over `Seq byte`. **Consequence:** the specification carrier and the runtime carrier are two objects, and the obligation is to prove they agree. |
 | **[D11]** | a **closed 8-leaf GADT** for C | Custard emits C with no closures and no `Prims.int`; a record holding `a -> option byte_seq` does not translate. `decode_bytes` takes a tag, not a codec, and every `fn` carries a byte-level separation-logic post-condition proved to agree with the pure spec. The source states the exclusion rule: *"`CT_Satisfy` excluded: function-typed constructor breaks extraction. `CT_Bytes`, `CT_Text` excluded: use the pure-spec bridge."* **Cost:** `[W6]`. |
+| **[D12]** | **leading zeros are padding, not digits** — a numeric reader rejects them | §6.4's `integer` is `Iso read' show' $ many digit`, where `read'` accepts whatever `reads` accepts, whole-string.  `reads "01"` succeeds, so the paper's `integer` **decodes `"01"` to `1` while `show' 1 = "1"`** — its own inverse law fails on that input exactly as `ignore`'s does (§6.3), and the paper does not say so.  This library rejects the leading zero: `enc 1 = "1"` always, so `"01"` is outside the codec's image, and a reader that accepted it would make `law_bwd` false.  **Why this is a departure and not a bug-fix**: it changes what the paper's `integer` accepts.  See [`[D12]` in full](#d12-in-full--leading-zeros-are-padding-not-digits) for why the classification is *padding* (the `ignore` analogue) and what it costs. |
+| **[D13]** | **numeric readers accept exactly the encoder's image** | `varint` (LEB128) and `digits_to_int` reject input their encoder never produces — overlong LEB128 (`[0x80;0x00]` is not `0`; `enc 0 = [0x00]`) and leading zeros.  Without this the backward direction is **false**, not merely unproved, and no amount of proof work fixes it.  `[D12]` is the digit case; this is the general obligation.  **Planned/landing**: decoder changes verified; both laws **not yet proved** (`[W8]`).  The Pulse/C decoder must be changed in lockstep or the extracted C disagrees with the pure spec. |
 
-### [D9] in full — why the law is conditional
+### `[D12]` in full — leading zeros are padding, not digits
+
+The paper's §6.4 integer codec:
+
+```haskell
+integer :: Syntax δ ⇒ δ Integer
+integer = Iso read′ show′ $ many digit
+  where read′ s = case [x | (x, "") ← reads s] of
+                    []    → Nothing
+                    (x:_) → Just x
+```
+
+`read′` is written with the **list** decoder and filters to whole-string matches.
+`reads "01"` yields `[(1, "")]`, so the paper's `integer` accepts `"01"` and
+returns `1` — while `show′ 1 = Just "1"`.  Substituting into `Iso`'s field,
+`apply a = some b ↔ unapply b = some a`, gives a **false instance**: one input,
+two spellings, one output.  The paper does not remark on it; §6.3 notes the
+`ignore` case only.
+
+**The classification.** A leading zero carries no numeric information: `enc 1`
+is `"1"`, and `"01"` is a *lax spelling*, not a second encoding.  That makes it
+**padding**, and padding is what §6.3's `ignore` exists to consume — "`ignore`
+maps *any* run of whitespace down to a single value", accepted by the paper
+"modulo equivalence classes".  This library rejects it for the reason it would
+reject `" 1"`: the strict reader does not ignore ignorable characters.
+
+**What it costs, and what it does not.**
+
+- `enc` is **untouched**: every in-domain value produces byte-identical output
+  (byte-level preservation, `REQ-ISO-PRESERVE`).  Only input `enc` could
+  never produce stops decoding, and that input is malformed, not a value.
+- `law_bwd` is **not weakened** — it becomes *true*, where before it was false.
+- Lenient parsing is **not deleted as a capability**: it belongs *outside* the
+  codec, as a separately-proved layer (the `/lean-codec` `decodeNormal`
+  pattern, `[D4]` there).  This library has not built that layer; `[W9]`
+  records it.
+- **Not the same as `ignore`**: `ignore` is unreachable *because it is
+  constant* (`[D4]`).  A leading-zero-tolerant reader is reachable — it is a
+  partial iso on a laxer input syntax — but it is a **different object** from
+  `integer`, with its own (false, if merged into one) law.  Keeping them apart
+  is the whole point.
+
+### `[D9]` in full — why the law is conditional
 
 The paper's inverse law is unconditional, because §3.1 leaves it in prose and
 §6.3 relaxes it to "modulo equivalence classes" whenever a destructive
@@ -132,6 +176,8 @@ not check**.
 | **[S5]** | a **facade with two naming layers** | Long names (`then_drop`) *and* operator aliases (`*>`), per `CODE_GUIDELINES.md`; `Data.Codec` uses `include` **and** `open` so both reach consumers. |
 | **[S6]** | **93 lemmas, mechanically anchored** | Every `lemma_*` is anchored by name in `Data.Codec.Test.Integration`, so deleting one breaks verification; 34 `_co*` bindings anchor values too. The paper, being prose plus listings, has no equivalent guarantee. Coverage is *not* total — see `[W7]`. |
 | **[S7]** | the stopping condition is **exact and direction-split** | `codec_v2` gives `law_fwd` a value-indexed `rest_cond_v` (it holds the value) and `law_bwd` nothing (the value is what it recovers). A single shared predicate is *circular*; splitting dissolves it, and it is what lets `sep_by1`'s forward law thread as conjunction elimination instead of an unprovable prefix-closure step. |
+| **[S8]** | readers are **canonical by construction**, not by a side condition | `[D13]` makes `dec` accept exactly `enc`'s image, so the backward law becomes *true* rather than *conditional on the input*. Weakens nothing: it removes accepted inputs, adds no hypothesis, and shrinks no domain. It is the answer to the paper's own §6.4 `integer` defect (`[D12]`), which the paper leaves unstated. **Status:** decoders verified, laws open (`[W8]`). |
+| **[S9]** | the paper's `integer` law **failure is named and fixed** | §6.4's `integer` accepts `"01"` while `show′ 1 = "1"`, so its `Iso` field is a false instance — the same defect class as §6.3's `ignore`, which the paper flags for `ignore` only. This library states it, classifies it (padding, `[D12]`), and rejects the input, so the law holds where the paper's does not. |
 
 ### Weaknesses (what this library gives up)
 
@@ -149,6 +195,8 @@ the result a strengthening.
 | **[W5]** | `map_`'s backward law needs an **extra obligation** | `map_retract_on_image`, quantified over the codec's image rather than universally. Not derivable: a law-abiding codec plus concrete `(f, g)` refute it outright. Forced by `[D5]`'s record shape; a value-dependent law cannot be a field. |
 | **[W6]** | the C path covers **8 leaves**, not the library | `product`, `alt`, `sep_by1*`, `take_until`, `opt_prefixed`, `satisfy_many*` have a pure spec and **no C path**. "The library extracts to C" is true of the leaves only. |
 | **[W7]** | **one combinator lacks a coverage anchor** | `opt_prefixed` has no `let _x = opt_prefixed` in the integration module, so renaming or deleting it would leave the build green. |
+| **[W8]** | the `[D12]`/`[D13]` canonical readers are **verified, but their laws are not yet proved** | The two canonical decoders are written and *provably reject* their witnesses (`varint` `[0x80;0x00]` -> `None`; `digits_to_int` `"01"` -> `None`), with canonical forms intact, at default rlimit and 0 admit.  But `law_fwd` and `law_bwd` over the *canonical* decoders are **open**, and the Pulse/C decoder is **not yet updated** — so until both land, the C path still accepts what the pure spec would reject.  Stated here rather than buried: recording `[D12]`/`[D13]` as *done* before the laws close would be exactly the "prose that outruns the checker" failure this document exists to avoid. |
+| **[W9]** | **no lenient input layer** | `[D12]` rejects non-canonical digits rather than tolerating them, so a caller that must accept `"01"` gets an error.  The `/lean-codec` `decodeNormal` mechanism (`[D4]` there) places that toleration *outside* the `Iso` as a separately-proved artifact; this library has **not built it**, and building it is bounded by the normalizer being length-preserving (so a value whose lax spelling differs in *length* — `[0x80;0x00]` -> `0` — is not expressible by it at all; that input is malformed, not a spelling). |
 
 ### [O1] — recorded and **rejected**: no benefit under a C-only product goal
 
