@@ -57,7 +57,7 @@ _strengthening_ — no observable-semantics change), plus what it gives up (a
 _weakness_ — a loss of guarantee, stated with the reason it was accepted). Each
 entry cites the paper's § and the F\* symbol that implements it, so a porter can
 read this one list and know exactly what to reproduce. Anchors `[D1]`–`[D13]`,
-`[S1]`–`[S9]`, `[W1]`–`[W9]` and `[O1]` are stable cross-reference targets, shared
+`[S1]`–`[S9]`, `[W1]`–`[W10]` and `[O1]` are stable cross-reference targets, shared
 with the code and the engineering ledger in `openspec/`.
 
 Section numbers below refer to the paper's own sectioning as reproduced in
@@ -296,50 +296,69 @@ extracted C disagrees with the pure spec.
 
 ### Strengthenings (we complete the paper, without changing its meaning)
 
-**[S1] The inverse law is _enforced by the type_ — the answer to §7.5.**
+Each entry is marked **_(shipped)_** if it holds of `src/` as committed, or
+**(`codec_v2` target)** if it holds only of the spike suite and is not yet in
+`src/`. The distinction is load-bearing: no combinator instantiates `codec_v2`
+yet, so a target is a plan, not a guarantee.
+
+**[S1] _(shipped)_ The inverse law is _enforced by the type_ — the answer to §7.5.**
 A codec without its proof cannot be constructed. Claims _enforcement_, not
 _unconditionality_: a conditional obligation the compiler demands is strictly more
 than an unconditional claim nothing checks, but it is not the same thing
 (`[W1]`).
 
-**[S2] The consumed-byte bound becomes _structural_.**
-Under `remainder` (`[D7]`) it follows from `dec s = Some (v, r)` by type.
-Previously a field on every codec, every instance `(fun s -> ())` — dead weight
-that proved nothing.
+**[S2] (`codec_v2` target) The consumed-byte bound becomes _structural_.**
+This is **not shipped**. The legacy record in `src/` still declares
+`dec_consumed_bound` as a field (`Data.Codec.Types.fst:147`), and 22 of the 26
+codec literals discharge it with `(fun s -> ())`. Those stubs are not vacuous —
+a deliberately false variant fails to verify — but they are obligations each
+leaf's own decoder structure happens to discharge, not a typing fact.
 
-**[S3] The branch-selection obligation is _stated in the type_.**
+What `codec_v2` will give is the `remainder` refinement
+(`Data.Codec.Types.fst:4117`), under which the bound follows from
+`dec s = Some (v, r)` by type and the field disappears. `codec_v2` is declared
+but **no combinator instantiates it**, so today this is a target.
+
+**[S3] _(shipped)_ The branch-selection obligation is _stated in the type_.**
 `alt_wfcv` is discharged once, in the constructor, not re-derived per call site or
 left implicit. Strengthens over _silence_; its existence is a cost of `[D3]`
 (`[W4]`).
 
-**[S4] `codec` quantifies over _`eqtype`_.**
+**[S4] _(shipped)_ `codec` quantifies over _`eqtype`_.**
 Makes the roundtrip a _decidable_ proposition the solver can work with. A
 restriction that strengthens the specification; free in practice, since every
 downstream value type is `string`/`int`/`byte` records.
 
-**[S5] A facade with _two naming layers_.**
+**[S5] _(shipped)_ A facade with _two naming layers_.**
 Long names (`then_drop`) _and_ operator aliases (`*>`), per `CODE_GUIDELINES.md`;
 `Data.Codec` uses `include` **and** `open` so both reach consumers.
 
-**[S6] _67 lemmas, mechanically anchored_ against deletion.**
-Every `lemma_*` is anchored by name in `Data.Codec.Test.Integration`, so deleting
-one breaks verification; `_co*` bindings anchor values too. The paper, being prose
-plus listings, has no equivalent guarantee. Coverage is _not_ total — see `[W7]`.
+**[S6] _(partially shipped)_ _76 lemmas, anchored_ against deletion.**
+The count is **76**: 67 `let lemma_*` (62 in `Types`, 2 in `Text`, 2 in the
+facade, 1 in `Pulse`) **plus 9** `fn lemma_*` in `Data.Codec.Pulse` — the eight
+`lemma_pulse_roundtrip_*` and `lemma_pulse_encode_decode_match`. A
+`^let lemma_` grep finds only the 67; that is why the split is stated here.
 
-**[S7] Direction-split predicates: `rest_cond_v` for `law_fwd` only.**
+Anchoring is **incomplete**: 9 of the 67 `let` lemmas are not referenced by
+`Data.Codec.Test.Integration`, so deleting them would leave the build green —
+see `[W7]` for the list and the repair (`codec-audit-fixes`). What ships today
+is the discipline and the 58 lemmas it covers; the paper, being prose plus
+listings, has no equivalent guarantee at all.
+
+**[S7] (`codec_v2` target) Direction-split predicates: `rest_cond_v` for `law_fwd` only.**
 `codec_v2` gives `law_fwd` a value-indexed `rest_cond_v` (it holds the value) and
 `law_bwd` nothing (the value is what it recovers). A single shared predicate is
 _circular_; splitting dissolves it, and it is what lets `sep_by1`'s forward law
 thread as conjunction elimination instead of an unprovable prefix-closure step.
 
-**[S8] Readers are _canonical by construction_, not by a side condition.**
+**[S8] (`codec_v2` target) Readers are _canonical by construction_, not by a side condition.**
 `[D13]` makes `dec` accept exactly `enc`'s image, so the backward law becomes
 _true_ rather than _conditional on the input_. Weakens nothing: it removes
 accepted inputs, adds no hypothesis, and shrinks no domain. It is the answer to
 the paper's own §6.4 `integer` defect (`[D12]`), which the paper leaves unstated.
 Status: decoders verified, laws open (`[W8]`).
 
-**[S9] The paper's `integer` law _failure is named and fixed_.**
+**[S9] _(shipped)_ The paper's `integer` law _failure is named and fixed_.**
 §6.4's `integer` accepts `"01"` while `show′ 1 = "1"`, so its `Iso` field is a
 false instance — the same defect class as §6.3's `ignore`, which the paper flags
 for `ignore` only. This library states it, classifies it (padding, `[D12]`), and
@@ -376,20 +395,32 @@ all, and the paper's `many` has no analogue of the same shape (`count`,
 explicit bound or terminator). The paper's own §4.4 cost — exponential worst case,
 space leak — is avoided.
 
-**[W5] `map_`'s backward law needs an _extra obligation_.**
+**[W5] (`codec_v2` target) `map_`'s backward law needs an _extra obligation_.**
 `map_retract_on_image`, quantified over the codec's image rather than universally
 (`map_law_bwd_on_image` is its proof). Not derivable: a law-abiding codec plus
 concrete `(f, g)` refute it outright. Forced by `[D5]`'s record shape; a
 value-dependent law cannot be a field.
+
+This obligation is **not in `src/`**: the legacy `map_` has a one-way
+`roundtrip` and no backward law at all, so it needs no retract hypothesis. The
+obligation appears only when `map_` is restated against `codec_v2`, which the
+spike suite does and `src/` has not.
 
 **[W6] The C execution path covers _8 leaves_, not the library.**
 `product`, `alt`, `sep_by1*`, `take_until`, `opt_prefixed`, `satisfy_many*` have a
 pure spec and **no C path**. "The library extracts to C" is true of the leaves
 only.
 
-**[W7] _One combinator lacks a coverage anchor_.**
-`opt_prefixed` has no `let _x = opt_prefixed` in the integration module, so
-renaming or deleting it would leave the build green.
+**[W7] _Nine lemmas lack a coverage anchor_.**
+`Data.Codec.Test.Integration` does not reference these, so deleting any of them
+would leave the build green: `no_overlap_cons`, `split_head`, `scan_prefix`,
+`scan_cons_no_prefix`, and the five `opt_prefixed_{dec,enc,rest_cond,wfcv,wfcv_prop}_eq`
+accessors. The last five are referenced **nowhere at all** — dead code. The
+combinator `opt_prefixed` itself has no coverage binding either.
+
+This is why `[S6]` says anchoring is only partially shipped. Repair is tracked
+in `codec-audit-fixes` T2: delete the five dead accessors, anchor the four used
+lemmas, and give `opt_prefixed` a binding or a written reason for none.
 
 **[W8] The `[D12]`/`[D13]` canonical readers are _verified, but their laws are
 not yet proved_.**
@@ -410,6 +441,21 @@ artifact; this library has **not built it**, and building it is bounded by the
 normalizer being length-preserving (so a value whose lax spelling differs in
 _length_ — `[0x80;0x00]` -> `0` — is not expressible by it at all; that input is
 malformed, not a spelling).
+
+**[W10] _The C tier's domain is narrower than the pure spec's_.**
+`varint.wfcv` admits `[0, 2^35)` (`Data.Codec.Types.fst`, in the `varint`
+literal, which says so explicitly), but the Pulse path is `U32.t`-valued, i.e.
+`[0, 2^32)`. Values in `[2^32, 2^35)` therefore have a pure specification, a
+proved `roundtrip`, and **no encode/decode path in the extracted C** — so a C
+consumer that trusts `wfcv` gets a codec that cannot round-trip part of its own
+domain.
+
+The source calls the headroom intentional ("typical protocols which only need
+32-bit values over the wire"), and that may be the right call, but it is a gap
+between the specification and the artifact, and it is stated here rather than
+cited as a capability. Narrowing `wfcv` to `[0, 2^32)` is a design decision for
+`codec-strict-isomorphism`, not a documentation repair; until it is made, this
+entry stands.
 
 ### Open problem
 
@@ -662,7 +708,7 @@ with 0 admits, plus 3 asserted refutations that must fail. Status per combinator
 | `count` (positional) | ✅ | ✅ |
 | `map_` | ✅ w/ `map_law_bwd_on_image` (the `retract` hypothesis) | ✅ w/ the folded guard |
 | `text` | not yet proved (swept canonical, so statable) | not yet proved |
-| `varint` | ⛔ **FALSE** over the library's decoder — overlong LEB128 (`[D13]`) | ✅ at full `wfcv = [0, 2^35)` |
+| `varint` | ⛔ **FALSE** over the library's decoder — overlong LEB128 (`[D13]`) | ✅ at full `wfcv = [0, 2^35)` — but see `[W10]`: the C path only reaches 2^32 |
 | `digits_to_int` | ⛔ **FALSE** over the library's decoder — leading zero (`[D12]`) | — |
 
 **Nothing is migrated into `src/` yet** — `codec_v2` is declared there and proved

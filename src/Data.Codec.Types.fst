@@ -4148,7 +4148,8 @@ let remainder (s: byte_seq) = r:byte_seq{ Seq.length r <= Seq.length s }
       Together the two laws make a codec a partial isomorphism.
 
     Three deliberate design points, each machine-justified in the change's
-    spike suite (`spike-*.fst`, 15 modules + 2 asserted refutations, 0 admit):
+    spike suite (`spike-run.sh` — 28 modules + 3 asserted refutations, 0 admit;
+    the count lives in the runner, not here, because a carried total drifts):
 
     1. **Partiality is [option], both ways.**  [enc] may fail and [dec] may
        fail; neither is total.  This is why the record is a *partial*
@@ -4180,12 +4181,25 @@ let remainder (s: byte_seq) = r:byte_seq{ Seq.length r <= Seq.length s }
     LEAVES, `byte_val`, `satisfy`, `uint8` and `pure` now also have both laws
     (`research.md` F37): `pure`'s value-dependent guard folds to
     `wfcv v := (v == x)` and needs no extra hypothesis — a deletion test shows
-    the fold is load-bearing.  `bytes`, `varint`, `digits_to_int`, `text` and
-    the `word16*`/`word32*` leaves are NOT yet proved: their decoders must be
-    restated from a consumed COUNT to a REMAINDER, which is the open work
-    (T1.7).  The `sep_by1*` / `opt_prefixed` variants have transcription
-    verdicts only (`t0.3-table.md`); each needs its own spike before its
-    instance is claimed.  Do not assume a combinator's laws transfer. *)
+    the fold is load-bearing.  `bytes` (`research.md` F38) and all four of
+    `word16be`/`word16le`/`word32be`/`word32le` (`research.md` F44, in
+    `spike-words.fst`) also carry BOTH laws now; the fixed-width four are
+    strictly simpler than `bytes` — a literal consumed length means no refined
+    accessor and no `exists_intro`.
+
+    Still NOT proved at this record:
+      - `text`  — swept CANONICAL (`CanonicalitySweep.fst`), so its `law_bwd`
+                  is statable and true; an ordinary proof task (T1.7d).
+      - `varint`, `digits_to_int` — their `law_bwd` is **FALSE** over the
+                  library's decoders (`VarintNonCanonical.fst` for overlong
+                  LEB128; `[0x80;0x00]` decodes to `(0,2)` while `enc 0` has
+                  length 1).  The fix is canonical readers (F41/F42, Route A),
+                  not a weaker law; `law_fwd` for `varint` is already proved at
+                  the full `wfcv = [0, 2^35)`.  The Pulse/C decoder must change
+                  in lockstep or the two disagree.
+    The `sep_by1*` / `opt_prefixed` variants have transcription verdicts only
+    (`t0.3-table.md`); each needs its own spike before its instance is claimed.
+    Do not assume a combinator's laws transfer. *)
 noeq
 type codec_v2 (a: eqtype) = {
   enc         : a -> Tot (option byte_seq);
