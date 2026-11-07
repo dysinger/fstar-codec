@@ -487,6 +487,46 @@ remains recorded so the gap against the paper is a **decision, not an omission**
 and so the route is available if the goal ever becomes "specification parity with
 the paper" rather than "a verified codec that compiles to C".
 
+### What this library claims, and what it does not
+
+**Kept from the paper.** The idea — one description, two directions, related by
+invertibility; partial encoding; the `×`/`|`/`pure`/`token`/`satisfy` structure;
+relations as the specification of decoding.
+
+**Completed (relative to the paper).** The inverse law is enforced by the type
+(`[S1]`); the branch-selection obligation is stated rather than implicit
+(`[S3]`); the paper's own §6.4 `integer` defect is named and fixed (`[S9]`);
+anchoring of lemmas against deletion is begun (`[S6]`). Two further completions are
+`codec_v2` **targets**, not shipped: the structural consumed-byte bound (`[S2]`)
+and the exact direction-split stopping condition (`[S7]`).
+
+**Given up.** An unconditional law (`[W1]`), structural rather than solver-borne
+invertibility (`[W2]`), `enc` partiality enforced by the type (`[W3]`),
+backtracking and a caller-free `many` (`[W4]`), a `map_` needing no retract
+obligation (`[W5]`, a `codec_v2` target), a C path for every combinator rather
+than 8 leaves (`[W6]`), complete anchor coverage (`[W7]`), the numeral readers'
+laws (`[W8]`), a lenient input layer (`[W9]`), and a C domain as wide as the pure
+spec's (`[W10]`). These are losses, not trades dressed as gains.
+
+**Departed from the paper, and why.** A single-answer decoder (`[D2]`), tag-first
+`alt` (`[D3]`), a record rather than a typeclass-based description (`[D5]`), a
+runtime `bool` guard (`[D6]`), conditional laws (`[D9]`), a `Seq` carrier
+(`[D10]`), a closed tagged enumeration for C (`[D11]`), and canonical numeric
+readers (`[D12]`, `[D13]`). Every one traces to one fact: **three interpreters,
+one description, and one of the three is C.**
+
+**Not claimed.** AUDIT §4 — that invertibility is *structural*. That needs either
+an inductive `Codec` with a recursive decoder, which `[D5]` argues against on
+extraction grounds, or `[O1]`'s dual carrier, which is not adopted. AUDIT §3 is
+only partially met: `codec_v2` (`[S7]`) collapses `wfcv`/`wfcv_prop` to one guard,
+but `codec_v2` is not yet instantiated by any combinator. Both residuals are filed
+as weaknesses (`[W1]`, `[W2]`), not as strengthenings with a caveat.
+
+**What this README claims about status, stated once.** No count, lemma, or
+guarantee here is asserted of code that does not exist: entries marked
+**(`codec_v2` target)** hold only of the spike suite. If a claim in this document
+cannot be checked against `src/`, that is a defect in the document.
+
 ---
 
 ## Representations — `Seq byte` plus a refined remainder (the spec substrate)
@@ -737,8 +777,20 @@ and it stays open until all of the following land:
   | `Data.Codec` | facade: re-exports, long-name aliases, operators | OCaml only |
   | `Data.Codec.Pulse` | 8-leaf `codec_t`, the `fn`s and their roundtrip lemmas | **C, OCaml, F#** |
 
-  **67 lemmas, 0 admits.** No `admit`, no `assume val` anywhere in `src/`;
-  `make check` verifies **7 modules**.
+  **76 lemmas, 0 admits.** 67 `let lemma_*` plus 9 `fn lemma_*` in
+  `Data.Codec.Pulse` (the eight `lemma_pulse_roundtrip_*` and
+  `lemma_pulse_encode_decode_match`). No `admit`, no `assume val` anywhere in
+  `src/`; `make check` verifies **7 modules**. The 121 pure roundtrip/error-path
+  tests and 10 Pulse buffer tests are listed below.
+
+  **The 26 combinators.** Primitives (`token`, `byte_val`, `satisfy`, `pure`,
+  `bytes`, `uint8`, `word16be`, `word16le`, `word32be`, `word32le`, `varint`,
+  `digits_to_int`, `text`) plus combinators (`custom`, `product`, `sum`, `map_`,
+  `count`, `label`, `alt`), the variable-width predicate runs (`satisfy_many0`,
+  `satisfy_many1`), and the separator family (`sep_by1`, `sep_by1_trailing`,
+  `sep_by1_opt_trailing`, `opt_prefixed`) — plus operator aliases (`<|>`, `*>`,
+  `<*`). `one_of` and `take_until` return `(enc, dec, wfcv)` triples, not
+  `codec` records.
 
   **Module scope rule.** `Data.Codec.Types` is the _core_: it must not acquire a
   dependency on `Data.Codec.Text`, and it holds no text handling. Anything that
@@ -747,6 +799,19 @@ and it stays open until all of the following land:
   C dispatcher (`codec_t`) names them directly through `module DC =
   Data.Codec.Types`; separating them requires splitting that dispatcher (its own
   change: `codec-binary-tier-split`).
+
+### The C surface is a closed union, not a polymorphic sum — do not "clean it up"
+
+`Data.Codec.Pulse`'s `decode_result_c` is a **C-compatible** discriminated union
+(`DR_Inl`/`DR_Inr` over a single boxed `U32.t`), not the pure layer's polymorphic
+`either`. This is deliberate: C has no sum types, so every scalar leaf decodes
+into the same `U32.t` slot. Do **not** refactor it to an `either`-based
+polymorphic sum — that breaks `.#fsharp` and `.#native` extraction.
+
+This is a standing constraint on any future change, not a style preference: the
+three-interpreter design (`[D11]`) is what makes the payload a tag plus one
+scalar, and "simplifying" it to the pure layer's shape silently removes the C
+tier.
 
 - **Downstream (not in this repository)**: the formats this framework is meant to
   carry — numerals, text, network messages. The sibling splits these into
