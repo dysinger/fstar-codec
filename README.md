@@ -101,6 +101,13 @@ This is the canonical record of every place `codec` departs from the paper (a
 *_strengthening_* — no observable-semantics change), plus what it gives up (a
 *_weakness_*). Each entry cites the paper's § and the F\* symbol that implements
 it, so a porter can read this one list and know exactly what to reproduce.
+Anchors `[D1]`–`[D13]`, `[S1]`–`[S9]`, `[W1]`–`[W9]` and `[O1]` are stable
+cross-reference targets, shared with the code and the engineering ledger in
+`openspec/`.
+
+Section numbers below refer to the paper's own sectioning as reproduced in
+`../lean-codec/PAPER.md` (the paper uses a mix of `§n` and `§n.m`; where a fact
+lives in a subsection we cite the subsection).
 
 **One fact explains most of the departures: this library has three interpreters
 for one description — a specification the SMT solver reasons about, an
@@ -112,25 +119,106 @@ buffer. Dropping any *other* interpreter would not relax one of them.
 
 ### Departures (observable-semantics changes)
 
-| | Departure | Why |
-|---|---|---|
-| **[D1]** | `String`/`Char` → **bytes** | §4.1's syntax is textual: the decoder is `Parser (String → [(α, String)])` and the token primitive is over `Char`; §4.3's value graph is `Rel [(α, String)]`. A binary format is not made of characters — many of its bytes are not printable at all. So the base unit is a **byte**, the base string is a byte sequence, and `token : codec byte` is the paper's `token` on the new carrier. Text and Unicode are rebuilt downstream, **on top of** bytes, never underneath. |
-| **[D2]** | a **single-answer** decoder | §4.3's decoder returns *every* parse, and `\|` is their union. This one returns `either decode_error (a & nat)` — one answer or an error — because the decoder is the one Custard extracts: a list per parse is an allocation on the hot path, it has no lowering to a buffer-and-cursor, and §4.4 already admits backtracking's exponential cost ("limits its applicability to large inputs"). **Cost:** see `[W4]`. |
-| **[D3]** | `alt` **selects from the input** | With one answer both branches cannot be tried, so the choice must be decided from the bytes: `alt` takes `p1 : byte -> bool`. The paper is already asymmetric — parser `\|` is backtracking union (§4.1), printer `\|` is left-biased `mplus` (§4.2) — and this keeps one direction of each. The obligation is stated in the type (`[S3]`). |
-| **[D4]** | **no `ignore`** | §6.3's `ignore :: α → Iso α ()` — "not a strict partial isomorphism, because **all values of `α` are mapped to ()**". `skipSpace` and `optSpace` are its two direct instantiations, and they lose the run: three blanks in, a fixed run out. No `ignore` exists here. The `roundtrip` field requires `dec (enc v ++ r)` to return `v`, and a constant encoder cannot recover which run it saw, so the combinator cannot be written. A run of allowed bytes is instead *captured* as a value and re-emitted verbatim — same length, same bytes. **Where the paper relaxes the law to keep a destructive constructor, this library keeps the law and drops the constructor.** |
-| **[D5]** | `codec` is a **record of functions**, not §3.4's typeclass | Each field is a *projection*, so `token.enc v` normalises under SMT — which is what discharges the roundtrips with no induction — and a record lowers where an AST with function-valued leaves does not (`[D11]`). **Cost:** a `noeq` record's fields are opaque across module boundaries, so every combinator needs accessor lemmas and the laws are per-combinator solver lemmas rather than one induction (`[W2]`). |
-| **[D6]** | `enc` is **total**; well-formedness is a `bool` *and* a `prop` | The guard must be reachable from a runtime check: the C caller discharges `pure (U32.v v < 65536)` in a Pulse precondition, and a `prop` is erased before it reaches the checker. Once `wfcv` is a field, a second field (`wfcv_prop`) exists so the *proof* can consume the same fact. **Cost:** `[W3]`, and the redundancy in `[W1]`. |
-| **[D7]** | `dec` reports **consumed bytes**, and `remainder` is the fix | `(value, nat)` trusts a claimed count that `dec_consumed_bound` repairs by lemma. `remainder s = r:byte_seq{ \|r\| ≤ \|s\| }` carries the bound in the type, so consumers get it free and the bound becomes structural (`[S2]`). Load-bearing: without it `product` inherits an undischargeable `\|r₁\| ≤ \|s\|`. |
-| **[D8]** | `codec` and `codec_v2` **coexist** during migration | The two cannot share a name while 27 `roundtrip` fields migrate one at a time. `_v2` is a **temporary** label; the end state renames it back. Placement is constrained: `codec_v2` must be declared *after* `sep_by1_opt_trailing_roundtrip`, or that lemma's obligation becomes unprovable (`Error 19`; rlimit 1600 does not help). |
-| **[D9]** | the laws are **conditional** | The central departure. See the dedicated section below. |
-| **[D10]** | the carrier is **`Seq byte`** plus a refined remainder | Three independent reasons: `Seq` has 93 lemmas behind it, so laws reduce; Custard consumes `Pulse.Lib.Array.array U8.t` through `pts_to` views and `u32` offsets, so a `Seq` can never be the runtime carrier; and every Pulse post-condition and downstream consumer is already stated over `Seq byte`. **Consequence:** the specification carrier and the runtime carrier are two objects, and the obligation is to prove they agree. |
-| **[D11]** | a **closed 8-leaf GADT** for C | Custard emits C with no closures and no `Prims.int`; a record holding `a -> option byte_seq` does not translate. `decode_bytes` takes a tag, not a codec, and every `fn` carries a byte-level separation-logic post-condition proved to agree with the pure spec. The source states the exclusion rule: *"`CT_Satisfy` excluded: function-typed constructor breaks extraction. `CT_Bytes`, `CT_Text` excluded: use the pure-spec bridge."* **Cost:** `[W6]`. |
-| **[D12]** | **leading zeros are padding, not digits** — a numeric reader rejects them | §6.4's `integer` is `Iso read' show' $ many digit`, where `read'` accepts whatever `reads` accepts, whole-string. `reads "01"` succeeds, so the paper's `integer` **decodes `"01"` to `1` while `show' 1 = "1"`** — its own inverse law fails on that input exactly as `ignore`'s does (§6.3), and the paper does not say so. This library rejects the leading zero: `enc 1 = "1"` always, so `"01"` is outside the codec's image, and a reader that accepted it would make `law_bwd` false. **Why this is a departure and not a bug-fix**: it changes what the paper's `integer` accepts. See [`[D12]` in full](#d12-in-full--leading-zeros-are-padding-not-digits). |
-| **[D13]** | **numeric readers accept exactly the encoder's image** | `varint` (LEB128) and `digits_to_int` reject input their encoder never produces — overlong LEB128 (`[0x80;0x00]` is not `0`; `enc 0 = [0x00]`) and leading zeros. Without this the backward direction is **false**, not merely unproved, and no amount of proof work fixes it. `[D12]` is the digit case; this is the general obligation. **Planned/landing**: decoder changes verified; both laws **not yet proved** (`[W8]`). The Pulse/C decoder must be changed in lockstep or the extracted C disagrees with the pure spec. |
+**[D1] `String`/`Char` → _bytes_.** §4.1's syntax is textual: the decoder is
+`Parser (String → [(α, String)])` and the token primitive is over `Char`; §4.3's
+value graph is `Rel [(α, String)]`. A binary format is not made of characters —
+many of its bytes are not printable at all. So the base unit is a **byte**, the
+base string is a byte sequence, and `token : codec byte` is the paper's `token`
+on the new carrier. Text and Unicode are rebuilt downstream, **on top of**
+bytes, never underneath.
 
-#### `[D12]` in full — leading zeros are padding, not digits
+**[D2] a _single-answer_ decoder.** §4.3's decoder returns *every* parse, and
+`\|` is their union. This one returns `either decode_error (a & nat)` — one
+answer or an error — because the decoder is the one Custard extracts: a list per
+parse is an allocation on the hot path, it has no lowering to a
+buffer-and-cursor, and §4.4 already admits backtracking's exponential cost
+("limits its applicability to large inputs"). **Cost:** see `[W4]`.
 
-The paper's §6.4 integer codec:
+**[D3] `alt` _selects from the input_.** With one answer both branches cannot be
+tried, so the choice must be decided from the bytes: `alt` takes `p1 : byte ->
+bool`. The paper is already asymmetric — parser `\|` is backtracking union
+(§4.1), printer `\|` is left-biased `mplus` (§4.2) — and this keeps one
+direction of each. The obligation is stated in the type (`[S3]`).
+
+**[D4] _no `ignore`_.** §6.3's `ignore :: α → Iso α ()` — "not a strict partial
+isomorphism, because **all values of `α` are mapped to ()**". `skipSpace` and
+`optSpace` are its two direct instantiations, and they lose the run: three
+blanks in, a fixed run out. No `ignore` exists here. The `roundtrip` field
+requires `dec (enc v ++ r)` to return `v`, and a constant encoder cannot recover
+which run it saw, so the combinator cannot be written. A run of allowed bytes is
+instead *captured* as a value and re-emitted verbatim — same length, same bytes.
+**Where the paper relaxes the law to keep a destructive constructor, this
+library keeps the law and drops the constructor.**
+
+**[D5] `codec` is a _record of functions_, not §3.4's typeclass.** Each field is
+a *projection*, so `token.enc v` normalises under SMT — which is what discharges
+the roundtrips with no induction — and a record lowers where an AST with
+function-valued leaves does not (`[D11]`). **Cost:** a `noeq` record's fields
+are opaque across module boundaries, so every combinator needs accessor lemmas
+and the laws are per-combinator solver lemmas rather than one induction
+(`[W2]`).
+
+**[D6] `enc` is _total_; well-formedness is a `bool` *and* a `prop`.** The guard
+must be reachable from a runtime check: the C caller discharges `pure (U32.v v <
+65536)` in a Pulse precondition, and a `prop` is erased before it reaches the
+checker. Once `wfcv` is a field, a second field (`wfcv_prop`) exists so the
+*proof* can consume the same fact. **Cost:** `[W3]`, and the redundancy in
+`[W1]`.
+
+**[D7] `dec` reports _consumed bytes_, and `remainder` is the fix.** `(value,
+nat)` trusts a claimed count that `dec_consumed_bound` repairs by lemma.
+`remainder s = r:byte_seq{ \|r\| ≤ \|s\| }` carries the bound in the type, so
+consumers get it free and the bound becomes structural (`[S2]`). Load-bearing:
+without it `product` inherits an undischargeable `\|r₁\| ≤ \|s\|`.
+
+**[D8] `codec` and `codec_v2` _coexist_ during migration.** The two cannot share
+a name while 27 `roundtrip` fields migrate one at a time. `_v2` is a
+**temporary** label; the end state renames it back. Placement is constrained:
+`codec_v2` must be declared *after* `sep_by1_opt_trailing_roundtrip`, or that
+lemma's obligation becomes unprovable (`Error 19`; rlimit 1600 does not help).
+
+**[D9] the laws are _conditional_.** The central departure. See the dedicated
+section below.
+
+**[D10] the carrier is _`Seq byte`_ plus a refined remainder.** Three
+independent reasons: `Seq` has 93 lemmas behind it, so laws reduce; Custard
+consumes `Pulse.Lib.Array.array U8.t` through `pts_to` views and `u32` offsets,
+so a `Seq` can never be the runtime carrier; and every Pulse post-condition and
+downstream consumer is already stated over `Seq byte`. **Consequence:** the
+specification carrier and the runtime carrier are two objects, and the
+obligation is to prove they agree.
+
+**[D11] a _closed 8-leaf GADT_ for C.** Custard emits C with no closures and no
+`Prims.int`; a record holding `a -> option byte_seq` does not translate.
+`decode_bytes` takes a tag, not a codec, and every `fn` carries a byte-level
+separation-logic post-condition proved to agree with the pure spec. The source
+states the exclusion rule: *"`CT_Satisfy` excluded: function-typed constructor
+breaks extraction. `CT_Bytes`, `CT_Text` excluded: use the pure-spec bridge."*
+**Cost:** `[W6]`.
+
+**[D12] _leading zeros are padding, not digits_ — a numeric reader rejects
+them.** §6.4's `integer` is `Iso read' show' $ many digit`, where `read'`
+accepts whatever `reads` accepts, whole-string. `reads "01"` succeeds, so the
+paper's `integer` **decodes `"01"` to `1` while `show' 1 = "1"`** — its own
+inverse law fails on that input exactly as `ignore`'s does (§6.3), and the paper
+does not say so. This library rejects the leading zero: `enc 1 = "1"` always, so
+`"01"` is outside the codec's image, and a reader that accepted it would make
+`law_bwd` false. **Why this is a departure and not a bug-fix**: it changes what
+the paper's `integer` accepts. "`[D12]` in full", immediately below, gives the
+classification and what it costs.
+
+**[D13] _numeric readers accept exactly the encoder's image_.** `varint`
+(LEB128) and `digits_to_int` reject input their encoder never produces —
+overlong LEB128 (`[0x80;0x00]` is not `0`; `enc 0 = [0x00]`) and leading zeros.
+Without this the backward direction is **false**, not merely unproved, and no
+amount of proof work fixes it. `[D12]` is the digit case; this is the general
+obligation. **Planned/landing**: decoder changes verified; both laws **not yet
+proved** (`[W8]`). The Pulse/C decoder must be changed in lockstep or the
+extracted C disagrees with the pure spec.
+
+
+**`[D12]` in full — leading zeros are padding, not digits.** The paper's §6.4
+integer codec:
 
 ```haskell
 integer :: Syntax δ ⇒ δ Integer
@@ -169,11 +257,10 @@ reject `" 1"`: the strict reader does not ignore ignorable characters.
   `integer`, with its own (false, if merged into one) law. Keeping them apart is
   the whole point.
 
-#### `[D9]` in full — why the law is conditional
-
-The paper's inverse law is unconditional, because §3.1 leaves it in prose and
-§6.3 relaxes it to "modulo equivalence classes" whenever a destructive
-constructor appears. Here the law is a **field** *and* carries three hypotheses:
+**`[D9]` in full — why the law is conditional.** The paper's inverse law is
+unconditional, because §3.1 leaves it in prose and §6.3 relaxes it to "modulo
+equivalence classes" whenever a destructive constructor appears. Here the law is
+a **field** *and* carries three hypotheses:
 
 ```fstar
 roundtrip : (v: a) -> (r: byte_seq) -> Lemma
@@ -198,46 +285,125 @@ must not extend, a specific value must be in range — not classes. A conditiona
 law whose conditions are precise is a different object from a law relaxed to hold
 "up to" a quotient.
 
-### Strengthenings (what this library proves that the paper does not)
+### Strengthenings (we complete the paper, without changing its meaning)
 
 An entry belongs here only if it adds a fact the paper **does not state or does
 not check**.
 
-| | Strengthening | Basis |
-|---|---|---|
-| **[S1]** | the inverse law is **enforced by the type** — the answer to §7.5 | A codec without its proof cannot be constructed. Claims *enforcement*, not *unconditionality*: a conditional obligation the compiler demands is strictly more than an unconditional claim nothing checks, but it is not the same thing (`[W1]`). |
-| **[S2]** | the consumed-byte bound is **structural** | Under `remainder` (`[D7]`) it follows from `dec s = Some (v, r)` by type. Previously a field on every codec, every instance `(fun s -> ())` — dead weight that proved nothing. |
-| **[S3]** | branch selection is **stated in the type** | `alt_wfcv` is discharged once, in the constructor, not re-derived per call site or left implicit. Strengthens over *silence*; its existence is a cost of `[D3]` (`[W4]`). |
-| **[S4]** | `codec` quantifies over **`eqtype`** | Makes the roundtrip a *decidable* proposition the solver can work with. A restriction that strengthens the specification; free in practice, since every downstream value type is `string`/`int`/`byte` records. |
-| **[S5]** | a **facade with two naming layers** | Long names (`then_drop`) *and* operator aliases (`*>`), per `CODE_GUIDELINES.md`; `Data.Codec` uses `include` **and** `open` so both reach consumers. |
-| **[S6]** | **67 lemmas, mechanically anchored** | Every `lemma_*` is anchored by name in `Data.Codec.Test.Integration`, so deleting one breaks verification; `_co*` bindings anchor values too. The paper, being prose plus listings, has no equivalent guarantee. Coverage is *not* total — see `[W7]`. |
-| **[S7]** | the stopping condition is **exact and direction-split** | `codec_v2` gives `law_fwd` a value-indexed `rest_cond_v` (it holds the value) and `law_bwd` nothing (the value is what it recovers). A single shared predicate is *circular*; splitting dissolves it, and it is what lets `sep_by1`'s forward law thread as conjunction elimination instead of an unprovable prefix-closure step. |
-| **[S8]** | readers are **canonical by construction**, not by a side condition | `[D13]` makes `dec` accept exactly `enc`'s image, so the backward law becomes *true* rather than *conditional on the input*. Weakens nothing: it removes accepted inputs, adds no hypothesis, and shrinks no domain. It is the answer to the paper's own §6.4 `integer` defect (`[D12]`), which the paper leaves unstated. **Status:** decoders verified, laws open (`[W8]`). |
-| **[S9]** | the paper's `integer` law **failure is named and fixed** | §6.4's `integer` accepts `"01"` while `show′ 1 = "1"`, so its `Iso` field is a false instance — the same defect class as §6.3's `ignore`, which the paper flags for `ignore` only. This library states it, classifies it (padding, `[D12]`), and rejects the input, so the law holds where the paper's does not. |
+**[S1] the inverse law is _enforced by the type_ — the answer to §7.5.** A codec
+without its proof cannot be constructed. Claims *enforcement*, not
+*unconditionality*: a conditional obligation the compiler demands is strictly
+more than an unconditional claim nothing checks, but it is not the same thing
+(`[W1]`).
 
-### Weaknesses (what this library gives up)
+**[S2] the consumed-byte bound is _structural_.** Under `remainder` (`[D7]`) it
+follows from `dec s = Some (v, r)` by type. Previously a field on every codec,
+every instance `(fun s -> ())` — dead weight that proved nothing.
+
+**[S3] branch selection is _stated in the type_.** `alt_wfcv` is discharged
+once, in the constructor, not re-derived per call site or left implicit.
+Strengthens over *silence*; its existence is a cost of `[D3]` (`[W4]`).
+
+**[S4] `codec` quantifies over _`eqtype`_.** Makes the roundtrip a *decidable*
+proposition the solver can work with. A restriction that strengthens the
+specification; free in practice, since every downstream value type is
+`string`/`int`/`byte` records.
+
+**[S5] a _facade with two naming layers_.** Long names (`then_drop`) *and*
+operator aliases (`*>`), per `CODE_GUIDELINES.md`; `Data.Codec` uses `include`
+**and** `open` so both reach consumers.
+
+**[S6] _67 lemmas, mechanically anchored_.** Every `lemma_*` is anchored by name
+in `Data.Codec.Test.Integration`, so deleting one breaks verification; `_co*`
+bindings anchor values too. The paper, being prose plus listings, has no
+equivalent guarantee. Coverage is *not* total — see `[W7]`.
+
+**[S7] the stopping condition is _exact and direction-split_.** `codec_v2` gives
+`law_fwd` a value-indexed `rest_cond_v` (it holds the value) and `law_bwd`
+nothing (the value is what it recovers). A single shared predicate is
+*circular*; splitting dissolves it, and it is what lets `sep_by1`'s forward law
+thread as conjunction elimination instead of an unprovable prefix-closure step.
+
+**[S8] readers are _canonical by construction_, not by a side condition.**
+`[D13]` makes `dec` accept exactly `enc`'s image, so the backward law becomes
+*true* rather than *conditional on the input*. Weakens nothing: it removes
+accepted inputs, adds no hypothesis, and shrinks no domain. It is the answer to
+the paper's own §6.4 `integer` defect (`[D12]`), which the paper leaves
+unstated. **Status:** decoders verified, laws open (`[W8]`).
+
+**[S9] the paper's `integer` law _failure is named and fixed_.** §6.4's
+`integer` accepts `"01"` while `show′ 1 = "1"`, so its `Iso` field is a false
+instance — the same defect class as §6.3's `ignore`, which the paper flags for
+`ignore` only. This library states it, classifies it (padding, `[D12]`), and
+rejects the input, so the law holds where the paper's does not.
+
+
+### Weaknesses (what this library gives up, and why)
 
 Each entry is a **loss of guarantee** against the paper, with the reason it was
 accepted. The reasons are real — the C path, the extraction model, a
 single-answer decoder — but a real reason makes a trade honest; it does not make
 the result a strengthening.
 
-| | Weakness | Consequence |
-|---|---|---|
-| **[W1]** | the inverse law is **conditional**, and redundant in one place | "Invertible" becomes a property of the description *on a domain the caller supplies*. Of the three hypotheses only `wfcv_prop` is *purely* a cost — it exists solely to mirror `wfcv`; `wfcv` drives a real runtime check and `rest_cond` a real stopping condition. `codec_v2` removes `wfcv_prop`. |
-| **[W2]** | invertibility is **solver-borne**, not structural | "All codecs are invertible" is a lemma family, not one argument, and each lemma is sensitive to `--z3rlimit` and `--fuel`. A reader cannot verify the claim by reading a proof. AUDIT §4 — **not resolved**. |
-| **[W3]** | `enc` is **total**, so an out-of-domain value yields a wrong answer, not an error | `uint8.enc 1000` yields `0xE8` (`v % 256`). The type no longer prevents the mistake: a caller that ignores `wfcv` gets silent corruption. `codec_v2`'s `enc : a -> option byte_seq` is the fix, and is what the migration lands. |
-| **[W4]** | **no backtracking**: `alt` needs a caller-supplied discriminator | A description that cannot be told apart from its first byte cannot be expressed at all, and the paper's `many` has no analogue of the same shape (`count`, `satisfy_many*`, `sep_by1*`, `take_until` cover the cases, each needing an explicit bound or terminator). The paper's own §4.4 cost — exponential worst case, space leak — is avoided. |
-| **[W5]** | `map_`'s backward law needs an **extra obligation** | `map_retract_on_image`, quantified over the codec's image rather than universally
-(`map_law_bwd_on_image` is its proof). Not derivable: a law-abiding codec plus concrete `(f, g)` refute it outright. Forced by `[D5]`'s record shape; a value-dependent law cannot be a field. |
-| **[W6]** | the C path covers **8 leaves**, not the library | `product`, `alt`, `sep_by1*`, `take_until`, `opt_prefixed`, `satisfy_many*` have a pure spec and **no C path**. "The library extracts to C" is true of the leaves only. |
-| **[W7]** | **one combinator lacks a coverage anchor** | `opt_prefixed` has no `let _x = opt_prefixed` in the integration module, so renaming or deleting it would leave the build green. |
-| **[W8]** | the `[D12]`/`[D13]` canonical readers are **verified, but their laws are not yet proved** | The two canonical decoders are written and *provably reject* their witnesses (`varint` `[0x80;0x00]` -> `None`; `digits_to_int` `"01"` -> `None`), with canonical forms intact, at default rlimit and 0 admit. But `law_fwd` and `law_bwd` over the *canonical* decoders are **open**, and the Pulse/C decoder is **not yet updated** — so until both land, the C path still accepts what the pure spec would reject. Stated here rather than buried: recording `[D12]`/`[D13]` as *done* before the laws close would be exactly the "prose that outruns the checker" failure this document exists to avoid. |
-| **[W9]** | **no lenient input layer** | `[D12]` rejects non-canonical digits rather than tolerating them, so a caller that must accept `"01"` gets an error. The `/lean-codec` `decodeNormal` mechanism (`[D4]` there) places that toleration *outside* the `Iso` as a separately-proved artifact; this library has **not built it**, and building it is bounded by the normalizer being length-preserving (so a value whose lax spelling differs in *length* — `[0x80;0x00]` -> `0` — is not expressible by it at all; that input is malformed, not a spelling). |
+**[W1] the inverse law is _conditional_, and redundant in one place.**
+"Invertible" becomes a property of the description *on a domain the caller
+supplies*. Of the three hypotheses only `wfcv_prop` is *purely* a cost — it
+exists solely to mirror `wfcv`; `wfcv` drives a real runtime check and
+`rest_cond` a real stopping condition. `codec_v2` removes `wfcv_prop`.
 
-### [O1] — recorded and **rejected**: no benefit under a C-only product goal
+**[W2] invertibility is _solver-borne_, not structural.** "All codecs are
+invertible" is a lemma family, not one argument, and each lemma is sensitive to
+`--z3rlimit` and `--fuel`. A reader cannot verify the claim by reading a proof.
+AUDIT §4 — **not resolved**.
 
-**[O1] A dual carrier** — `dec_spec : byte_seq -> list (a & remainder s)` (every
+**[W3] `enc` is _total_, so an out-of-domain value yields a wrong answer, not an
+error.** `uint8.enc 1000` yields `0xE8` (`v % 256`). The type no longer prevents
+the mistake: a caller that ignores `wfcv` gets silent corruption. `codec_v2`'s
+`enc : a -> option byte_seq` is the fix, and is what the migration lands.
+
+**[W4] _no backtracking_: `alt` needs a caller-supplied discriminator.** A
+description that cannot be told apart from its first byte cannot be expressed at
+all, and the paper's `many` has no analogue of the same shape (`count`,
+`satisfy_many*`, `sep_by1*`, `take_until` cover the cases, each needing an
+explicit bound or terminator). The paper's own §4.4 cost — exponential worst
+case, space leak — is avoided.
+
+**[W5] `map_`'s backward law needs an _extra obligation_.**
+`map_retract_on_image`, quantified over the codec's image rather than
+universally (`map_law_bwd_on_image` is its proof). Not derivable: a law-abiding
+codec plus concrete `(f, g)` refute it outright. Forced by `[D5]`'s record
+shape; a value-dependent law cannot be a field.
+**[W6] the C path covers _8 leaves_, not the library.** `product`, `alt`,
+`sep_by1*`, `take_until`, `opt_prefixed`, `satisfy_many*` have a pure spec and
+**no C path**. "The library extracts to C" is true of the leaves only.
+
+**[W7] _one combinator lacks a coverage anchor_.** `opt_prefixed` has no `let _x
+= opt_prefixed` in the integration module, so renaming or deleting it would
+leave the build green.
+
+**[W8] the `[D12]`/`[D13]` canonical readers are _verified, but their laws are
+not yet proved_.** The two canonical decoders are written and *provably reject*
+their witnesses (`varint` `[0x80;0x00]` -> `None`; `digits_to_int` `"01"` ->
+`None`), with canonical forms intact, at default rlimit and 0 admit. But
+`law_fwd` and `law_bwd` over the *canonical* decoders are **open**, and the
+Pulse/C decoder is **not yet updated** — so until both land, the C path still
+accepts what the pure spec would reject. Stated here rather than buried:
+recording `[D12]`/`[D13]` as *done* before the laws close would be exactly the
+"prose that outruns the checker" failure this document exists to avoid.
+
+**[W9] _no lenient input layer_.** `[D12]` rejects non-canonical digits rather
+than tolerating them, so a caller that must accept `"01"` gets an error. The
+`/lean-codec` `decodeNormal` mechanism (`[D4]` there) places that toleration
+*outside* the `Iso` as a separately-proved artifact; this library has **not
+built it**, and building it is bounded by the normalizer being length-preserving
+(so a value whose lax spelling differs in *length* — `[0x80;0x00]` -> `0` — is
+not expressible by it at all; that input is malformed, not a spelling).
+
+
+### Open problem
+
+**[O1] _a dual carrier_ — recorded and rejected: no benefit under a C-only
+product goal.** `dec_spec : byte_seq -> list (a & remainder s)` (every
 answer, making the law unconditional) alongside
 `dec_run : byte_seq -> option (a & remainder s)` (the single answer the runtime
 uses), with a proved relation between them. This is the only known route to an
