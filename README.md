@@ -333,22 +333,36 @@ downstream value type is `string`/`int`/`byte` records.
 Long names (`then_drop`) _and_ operator aliases (`*>`), per `CODE_GUIDELINES.md`;
 `Data.Codec` uses `include` **and** `open` so both reach consumers.
 
-**[S6] _(shipped)_ _71 lemmas, and every one anchored_ against deletion.**
-The count is **71**: 62 `let lemma_*` (57 in `Types`, 2 in `Text`, 2 in the
-facade, 1 in `Pulse`) **plus 9** `fn lemma_*` in `Data.Codec.Pulse` — the eight
-`lemma_pulse_roundtrip_*` and `lemma_pulse_encode_decode_match`. A
-`^let lemma_` grep finds only the 62; that is why the split is stated here.
-The counting commands are in `codec-audit-fixes`'s `research.md` (T0.1) — re-run
-them rather than trusting this number, and note that F\* comments nest, so a
+**[S6] _(shipped)_ _102 lemmas, and every one anchored_ against deletion.**
+The count is **102**, and it takes **three** declaration forms — state all three
+or the number is wrong:
+
+| form | count | where |
+|---|---|---|
+| `let lemma_*` | 62 | `Types` 57, `Text` 2, facade 2, `Pulse` 1 |
+| `let rec lemma_*` | **31** | all in `Types` |
+| `fn lemma_*` | 9 | `Data.Codec.Pulse` (the eight `lemma_pulse_roundtrip_*` and `lemma_pulse_encode_decode_match`) |
+
+So the two greps that look right both undercount: `grep -c '^let lemma_'` finds
+**62** (misses the recursive 31 *and* the Pulse 9), and adding `^fn lemma_` gets
+**71** (still misses the recursive 31). The only honest command is
+
+```bash
+grep -rhoE '^(let|let rec|fn) lemma_[A-Za-z0-9_]+' src/*.fst \
+  | sed -E 's/^(let rec|let|fn) //' | sort -u | wc -l     # => 102
+```
+
+Re-run it rather than trusting this number. This paragraph exists **because
+this document got it wrong twice** (76, then 71 — each a plausible number that a
+plausible grep produced); see `[W7]`. Note also that F\* comments nest, so a
 naive `\(\*.*?\*\)` stripper closes at an inner `*)`.
 
-Anchoring is **complete for the `let` lemmas**: all 62 are referenced by
-`Data.Codec.Test.Integration`, so deleting any of them fails the build. That
-was not true before `codec-audit-fixes` — five dead `opt_prefixed_*_eq`
-accessors were deleted and four used-but-unanchored lemmas were anchored (the
-record of that hole is `[W7]`). The 9 Pulse `fn` lemmas are covered by
-`Data.Codec.Test.Pulse` rather than the anchor module, since a Pulse `fn`
-cannot be anchored from a pure module.
+Anchoring is **complete**: all 102 are referenced by `Data.Codec.Test.
+Integration`, so deleting any of them fails the build. Before `codec-audit-fixes`
+that was false in three separate ways (nine unanchored, five of them dead code;
+and the four `let rec` lemmas below, which the `^let` sweep could not see).
+The 9 Pulse `fn` lemmas are covered by `Data.Codec.Test.Pulse` rather than the
+anchor module, since a Pulse `fn` cannot be anchored from a pure module.
 
 **[S7] (`codec_v2` target) Direction-split predicates: `rest_cond_v` for `law_fwd` only.**
 `codec_v2` gives `law_fwd` a value-indexed `rest_cond_v` (it holds the value) and
@@ -416,29 +430,39 @@ spike suite does and `src/` has not.
 pure spec and **no C path**. "The library extracts to C" is true of the leaves
 only.
 
-**[W7] _(repaired — retained as the record of the hole)_ A green build did not
-mean the lemmas were protected.**
-Before `codec-audit-fixes`, 9 of the `let` lemmas had no coverage anchor:
-deleting any of them left the build green. Two different defects hid behind one
-number:
+**[W7] _(repaired — retained as the record of the hole, because the repair
+itself failed once)_ A green build did not mean the lemmas were protected, and
+neither did a coverage sweep.**
+The hole had **three** layers, and each was found only by breaking the sweep
+that had just declared the previous one fixed:
 
-- **Dead code.** The five `opt_prefixed_{dec,enc,rest_cond,wfcv,wfcv_prop}_eq`
-  record-field accessors were each referenced **exactly once — their own
-  definition** — and zero times in `test/`. They are **deleted**. The
-  `opt_prefixed` *combinator* is untouched and now has coverage bindings for
-  itself and its six helper functions, so its deletion is caught.
-- **Used but unanchored.** `no_overlap_cons`, `scan_prefix`,
-  `scan_cons_no_prefix` and `split_head` are used by `src/` (2–4 references
-  each) and are **anchored** in `Data.Codec.Test.Integration`. The first three
-  were already load-bearing for `Types` itself; `split_head` is used only by
-  *future* `codec_v2` `law_bwd` proofs, so its anchor is what catches its
-  deletion — measured by deleting it, not assumed (T2.3).
+1. **Dead code (5 lemmas).** `opt_prefixed_{dec,enc,rest_cond,wfcv,wfcv_prop}_eq`
+   record-field accessors, each referenced **exactly once — its own definition**
+   — and zero times in `test/`. **Deleted**; the `opt_prefixed` combinator is
+   untouched and now has coverage bindings for itself and its six helpers.
+2. **Used but unanchored (4 lemmas).** `no_overlap_cons`, `scan_prefix`,
+   `scan_cons_no_prefix`, `split_head` — used by `src/`, absent from
+   `Data.Codec.Test.Integration`. **Anchored** and deletion-tested. The first
+   three break `Types` itself when deleted; `split_head` breaks **only** the
+   anchor module, because no `src/` proof calls it yet — the anchor is the
+   *only* thing that catches its removal.
+3. **Invisible to the sweep (4 more lemmas).** `lemma_is_prefix_of_self_append`,
+   `lemma_is_prefix_of_app_ignores_tail`, `lemma_scan_until_split_general`,
+   `lemma_sep_by1_enc_nonempty` — all **`let rec lemma_*`**, which
+   `grep '^let lemma_'` does not match. A sweep built on that pattern reported
+   full coverage while these four were unanchored, and the lemma count built on
+   the same pattern was wrong twice (76, then 71). **Anchored** and
+   deletion-tested.
 
 Why keep a closed weakness on the list: the unanchored set was invisible to
-both `make check` (green) and a lemma count, and the audit's own finding was
-first reported as "exactly one combinator lacks an anchor", which was wrong by
-9. An anchor that does not break the build is not an anchor, so coverage is
-now checked by deletion, never by grep.
+`make check` (green), to a lemma count, *and* to two successive coverage sweeps
+that used the wrong pattern. The audit's finding was itself first reported as
+"exactly one combinator lacks an anchor" (wrong by 9), and the fix for it was
+first reported as complete (wrong by 4). An anchor that does not break the build
+is not an anchor, and **a sweep that only looks at `^let` is not a sweep** —
+F\* has three lemma-declaration forms (`let`, `let rec`, and Pulse's `fn`), so
+coverage is now checked with `^(let|let rec|fn) lemma_` and confirmed by
+deletion, never by grep alone.
 
 **[W8] The `[D12]`/`[D13]` canonical readers are _verified, but their laws are
 not yet proved_.**
@@ -790,14 +814,14 @@ and it stays open until all of the following land:
 
   | Module | Role | Extracts to |
   |---|---|---|
-  | `Data.Codec.Types` | the record `codec a`, all combinators on bytes, 57 lemmas | OCaml only (pure spec) |
+  | `Data.Codec.Types` | the record `codec a`, all combinators on bytes, 88 lemmas | OCaml only (pure spec) |
   | `Data.Codec.Text` | `text : string -> codec string`, UTF-8/ASCII bridge | OCaml only |
   | `Data.Codec` | facade: re-exports, long-name aliases, operators | OCaml only |
   | `Data.Codec.Pulse` | 8-leaf `codec_t`, the `fn`s and their roundtrip lemmas | **C, OCaml, F#** |
 
-  **71 lemmas, 0 admits.** 62 `let lemma_*` plus 9 `fn lemma_*` in
-  `Data.Codec.Pulse` (the eight `lemma_pulse_roundtrip_*` and
-  `lemma_pulse_encode_decode_match`). No `admit`, no `assume val` anywhere in
+  **102 lemmas, 0 admits** — 62 `let lemma_*` + 31 `let rec lemma_*` + 9
+  `fn lemma_*` (there is no single grep that finds all three; the counting
+  command is in `[S6]`). No `admit`, no `assume val` anywhere in
   `src/`; `make check` verifies **7 modules**. The 121 pure roundtrip/error-path
   tests and 10 Pulse buffer tests are listed below.
 

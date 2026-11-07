@@ -75,6 +75,50 @@ check_block "Not claimed"
 check_block "decode_result_c"
 check_block "separator family (\`sep_by1\`"
 
+# ── 4. Every published lemma count matches the THREE-FORM enumeration ──
+#
+# F* has three lemma-declaration forms and `grep '^let lemma_'` matches one.
+# This library once published 67, then 76, then 71 -- all wrong, truth 102.
+# The README's [S6] states a total and a per-form split; check both.
+src_dir="$HERE/src"
+if [ -d "$src_dir" ]; then
+  n_let=$(cat "$src_dir"/*.fst | grep -c '^let lemma_')
+  n_rec=$(cat "$src_dir"/*.fst | grep -c '^let rec lemma_')
+  n_fn=$(cat "$src_dir"/*.fst  | grep -c '^fn lemma_')
+  total=$(( n_let + n_rec + n_fn ))
+  uniq=$(grep -rhoE '^(let|let rec|fn) lemma_[A-Za-z0-9_]+' "$src_dir"/*.fst \
+         | sed -E 's/^(let rec|let|fn) //' | sort -u | wc -l | tr -d ' ')
+
+  echo "info: lemmas = $n_let let + $n_rec let rec + $n_fn fn = $total (unique $uniq)"
+
+  if [ "$total" != "$uniq" ]; then
+    err "three-form count ($total) disagrees with unique names ($uniq) -- a name is declared twice"
+  fi
+  # [S6] must state the total.
+  if ! grep -qF "\`_${total} lemmas" "$README" && ! grep -qE "\*\*\[S6\][^\n]*${total} lemmas" "$README"; then
+    err "[S6] does not state the current lemma total ($total) -- README count is stale"
+  fi
+  # The per-form split must be stated too (that is what stops the next reader
+  # re-deriving the WRONG number from ^let alone).  Match a table row carrying
+  # BOTH the form and the number, in either order, rather than a fixed string --
+  # the README legitimately formats some rows as "| form | count |" and the
+  # counts carry optional bold markers.
+  check_row() {
+    form="$1"; n="$2"
+    if grep -E "\`${form}\`[^|]*\|\s*\**${n}\**\s*\|" "$README" >/dev/null \
+    || grep -E "\|\s*\**${n}\**\s*\|[^|]*\`${form}\`" "$README" >/dev/null; then
+      echo "ok: per-form count stated — ${form} = ${n}"
+    else
+      err "README does not state the per-form count '${form}' = ${n}"
+    fi
+  }
+  check_row 'let lemma_\*'       "$n_let"
+  check_row 'let rec lemma_\*'   "$n_rec"
+  check_row 'fn lemma_\*'        "$n_fn"
+else
+  echo "skip: no src/ directory, count check not run" >&2
+fi
+
 echo
 if [ "$fail" = "0" ]; then echo "PASS: README structural parity"; else echo "FAILED"; fi
 exit "$fail"

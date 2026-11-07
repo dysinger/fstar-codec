@@ -26,18 +26,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `law_bwd`).  Adds **`[W10]`**: `varint.wfcv` reaches `2^35` but the Pulse/C
   path is `U32.t`, so `[2^32, 2^35)` has a spec and no runtime path — previously
   cited as headroom, now stated as a gap.
-- **The lemma count is honest and generated.**  It was `67`, which undercounted
-  by 9 because Pulse's roundtrip lemmas are `fn lemma_*`, not `let`.  It is now
-  **71** (62 `let` + 9 `fn`) *after* the five deletions above, stated together
-  with the command that produces it.  `[S6]` and the Representations table were
-  corrected in all three places the number appeared.
-- **Every `let` lemma now has a coverage anchor.**  `no_overlap_cons`,
-  `scan_prefix`, `scan_cons_no_prefix` and `split_head` were used by `src/` (or,
-  for `split_head`, by future `codec_v2` `law_bwd`s) but not referenced by
-  `Data.Codec.Test.Integration`, so deleting them left the build green.
-  Deletion-tested: removing each now fails the build.  `opt_prefixed`, its
-  helpers, and `remainder` are anchored too.  `[W7]` rewritten to record the
-  closed hole (it had claimed "exactly one combinator lacks an anchor").
+- **The lemma count is honest and generated.**  It was `67`, which matched only
+  `let lemma_*` — F\* has **three** declaration forms, and the pattern missed
+  `let rec lemma_*` (31) and Pulse's `fn lemma_*` (9).  The total is **102**
+  (62 `let` + 31 `let rec` + 9 `fn`; `Types` alone has 88), published with the
+  per-form split and the one command that produces it.  Two earlier figures,
+  `76` and `71`, were published as verified and were each wrong.  `[S6]` and the
+  Representations table corrected in all three places the number appeared.
+- **Every lemma now has a coverage anchor.**  Eight lemmas were unanchored in
+  `src/`, in three classes: four used by `src/` (`no_overlap_cons`,
+  `scan_prefix`, `scan_cons_no_prefix`, `split_head`), and four `let rec`
+  lemmas (`lemma_is_prefix_of_self_append`,
+  `lemma_is_prefix_of_app_ignores_tail`, `lemma_scan_until_split_general`,
+  `lemma_sep_by1_enc_nonempty`) that the original `^let lemma_` sweep could not
+  see at all.  All anchored and deletion-tested: removing any of them now fails
+  the build.  `opt_prefixed`, its helpers, and `remainder` are anchored too.
+  `[W7]` rewritten to record the closed hole — including that the repair itself
+  failed once, because the sweep and the count shared the same blind spot.
 - **`codec_v2`'s doc comment refreshed** — it still said `word16*`/`word32*`
   were "NOT yet proved" (proved 2026-11-07) and cited "15 modules + 2 asserted
   refutations" (now 28 + 3, and the count is cited from `spike-run.sh` rather
@@ -46,11 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `check-readme-parity.sh` — asserts the eight `##` sections match
-  `../lean-codec/README.md` in name and order, that all 33 anchors
-  (`[D1]`–`[D13]`, `[S1]`–`[S9]`, `[W1]`–`[W10]`, `[O1]`) are defined exactly
+  `../lean-codec/README.md` in name and order, that the published lemma counts
+  match the three-form enumeration (`62 let + 31 let rec + 9 fn = 102`), that
+  all 33 anchors (`[D1]`–`[D13]`, `[S1]`–`[S9]`, `[W1]`–`[W10]`, `[O1]`) are defined exactly
   once, and that three blocks a past restructure silently deleted are present.
-  Mutation-tested: renaming a heading, renumbering an anchor, or dropping a
-  block each fail it.
+  Mutation-tested: renaming a heading, renumbering an anchor, dropping a block,
+  restating a stale total, or corrupting/removing a per-form row each fail it.
 
 ### Changed
 

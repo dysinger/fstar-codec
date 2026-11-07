@@ -1524,6 +1524,29 @@ let _ri_2 = scan_until_content
 let _ri_3 = scan_until_rest
 
 
+(* ── is_prefix_of / delimiter-scan lemmas ──
+
+   These four are `let rec`, which `grep '^let lemma_'` does NOT match.  That
+   blind spot is why an earlier coverage sweep reported "all 62 anchored" while
+   these were in fact unanchored -- see README `[W7]` and fstar-proofs §76(a''). *)
+
+
+(** [lemma_is_prefix_of_self_append] *)
+let _pf0 = lemma_is_prefix_of_self_append
+
+
+(** [lemma_is_prefix_of_app_ignores_tail] *)
+let _pf1 = lemma_is_prefix_of_app_ignores_tail
+
+
+(** [lemma_scan_until_split_general] *)
+let _pf2 = lemma_scan_until_split_general
+
+
+(** [lemma_sep_by1_enc_nonempty] *)
+let _pf3 = lemma_sep_by1_enc_nonempty
+
+
 (* [take_until] is a thin wrapper over [scan_until_*]; the delimiter-scan
    lemmas below are the ones [src/] uses to prove it, and each was previously
    unanchored (README `[W7]`).  Deleting any of them breaks this module. *)
