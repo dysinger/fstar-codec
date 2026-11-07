@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Deleted five dead `opt_prefixed_*_eq` accessor lemmas** from
+  `Data.Codec.Types` (`lemma_opt_prefixed_{dec,enc,rest_cond,wfcv,wfcv_prop}_eq`).
+  Each was referenced **exactly once in the tree — its own definition** — and
+  zero times in `test/`, so nothing could break and nothing was anchored.  The
+  `opt_prefixed` combinator and its six helper functions are untouched.
+
+### Fixed
+
+- **`README.md` no longer states the `codec_v2` end state in the present
+  tense.**  Every `[S*]` now carries a `(shipped)` / `(codec_v2 target)` marker;
+  `[S2]` (structural consumed-byte bound) is re-scoped to a target, since
+  `dec_consumed_bound` is still a field that 22 of 26 literals fill with
+  `(fun s -> ())` and no combinator instantiates `codec_v2`.  `[W5]` is scoped
+  likewise (`map_retract_on_image` is not in `src/`; `src/`'s `map_` has no
+  `law_bwd`).  Adds **`[W10]`**: `varint.wfcv` reaches `2^35` but the Pulse/C
+  path is `U32.t`, so `[2^32, 2^35)` has a spec and no runtime path — previously
+  cited as headroom, now stated as a gap.
+- **The lemma count is honest and generated.**  It was `67`, which undercounted
+  by 9 because Pulse's roundtrip lemmas are `fn lemma_*`, not `let`.  It is now
+  **71** (62 `let` + 9 `fn`) *after* the five deletions above, stated together
+  with the command that produces it.  `[S6]` and the Representations table were
+  corrected in all three places the number appeared.
+- **Every `let` lemma now has a coverage anchor.**  `no_overlap_cons`,
+  `scan_prefix`, `scan_cons_no_prefix` and `split_head` were used by `src/` (or,
+  for `split_head`, by future `codec_v2` `law_bwd`s) but not referenced by
+  `Data.Codec.Test.Integration`, so deleting them left the build green.
+  Deletion-tested: removing each now fails the build.  `opt_prefixed`, its
+  helpers, and `remainder` are anchored too.  `[W7]` rewritten to record the
+  closed hole (it had claimed "exactly one combinator lacks an anchor").
+- **`codec_v2`'s doc comment refreshed** — it still said `word16*`/`word32*`
+  were "NOT yet proved" (proved 2026-11-07) and cited "15 modules + 2 asserted
+  refutations" (now 28 + 3, and the count is cited from `spike-run.sh` rather
+  than carried).
+
+### Added
+
+- `check-readme-parity.sh` — asserts the eight `##` sections match
+  `../lean-codec/README.md` in name and order, that all 33 anchors
+  (`[D1]`–`[D13]`, `[S1]`–`[S9]`, `[W1]`–`[W10]`, `[O1]`) are defined exactly
+  once, and that three blocks a past restructure silently deleted are present.
+  Mutation-tested: renaming a heading, renumbering an anchor, or dropping a
+  block each fail it.
+
 ### Changed
 
 - Split `Data.Codec.Types` into a format-agnostic core plus a new

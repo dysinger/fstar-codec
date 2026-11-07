@@ -4066,30 +4066,17 @@ let opt_prefixed (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) : 
 #pop-options
 
 
-(** Accessor lemmas for [opt_prefixed] — export the opaque `noeq type` record
-    field equalities (fstar-proofs §18) so downstream consumers can reason
-    about [(opt_prefixed p delim c).wfcv/.rest_cond/.enc/.dec].  Each body is
-    [()] because the equality is definitional in the defining module. *)
+(* NOTE — there used to be five [lemma_opt_prefixed_*_eq] record-field
+   accessor lemmas here ([wfcv] / [wfcv_prop] / [rest_cond] / [enc] / [dec]).
+   They were DELETED (not merely unanchored): each was referenced exactly once
+   in the whole tree — its own definition — so they were dead code with no
+   coverage anchor either.  Nothing in [src/] or [test/] imported them, so the
+   deletion is behaviour-preserving by construction.  The [opt_prefixed]
+   COMBINATOR is untouched; it lives just above.
 
-let lemma_opt_prefixed_wfcv_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (v: option a) : Lemma
-  ((opt_prefixed p delim c).wfcv v == opt_prefixed_wfcv p delim c v)
-  = ()
-
-let lemma_opt_prefixed_wfcv_prop_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (v: option a) : Lemma
-  ((opt_prefixed p delim c).wfcv_prop v == opt_prefixed_wfcv_prop delim c v)
-  = ()
-
-let lemma_opt_prefixed_rest_cond_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (v: option a) (r: byte_seq) : Lemma
-  ((opt_prefixed p delim c).rest_cond v r == opt_prefixed_rest_cond p delim c v r)
-  = ()
-
-let lemma_opt_prefixed_enc_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (v: option a) : Lemma
-  ((opt_prefixed p delim c).enc v == opt_prefixed_enc delim c v)
-  = ()
-
-let lemma_opt_prefixed_dec_eq (#a:Type) (p: byte -> bool) (delim: codec unit) (c: codec a) (s: byte_seq) : Lemma
-  ((opt_prefixed p delim c).dec s == opt_prefixed_dec p delim c s)
-  = ()
+   If a downstream consumer does need a field equality, the bodies were all
+   [()] (the equality is definitional in this module), so re-adding one is
+   mechanical.  See [W7] in README.md. *)
 
 
 (* ⚠️ PLACEMENT CONSTRAINT — do not move this block earlier in the file.

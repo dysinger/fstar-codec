@@ -1524,6 +1524,23 @@ let _ri_2 = scan_until_content
 let _ri_3 = scan_until_rest
 
 
+(* [take_until] is a thin wrapper over [scan_until_*]; the delimiter-scan
+   lemmas below are the ones [src/] uses to prove it, and each was previously
+   unanchored (README `[W7]`).  Deleting any of them breaks this module. *)
+
+
+(** [lemma_scan_prefix] *)
+let _ri_9 = lemma_scan_prefix
+
+
+(** [lemma_scan_cons_no_prefix] *)
+let _ri_10 = lemma_scan_cons_no_prefix
+
+
+(** [lemma_no_overlap_cons] *)
+let _ri_11 = lemma_no_overlap_cons
+
+
 (** [take_until_dec] *)
 let _ri_4 = take_until_dec
 
@@ -1600,4 +1617,48 @@ let _ri11 = lemma_seq_to_list_head_is_index
 
 (** [lemma_seq_to_list_of_list_append] *)
 let _rq0 = lemma_seq_to_list_of_list_append
+
+
+(* ══ codec_v2 support ══ *)
+
+
+(** [remainder] — the refined remainder type behind [codec_v2]'s [law_bwd]. *)
+let _cv0 = remainder
+
+
+(** [lemma_split_head] — the single-leading-byte split every [law_bwd] over a
+    literal-decoding leaf needs.  `[src/]` uses it; it was previously
+    unanchored (README `[W7]`). *)
+let _cv1 = lemma_split_head
+
+
+(* ── opt_prefixed ── *)
+
+(* The five [lemma_opt_prefixed_*_eq] record-field accessors that used to sit
+   here were deleted: they were dead code.  The COMBINATOR is anchored below so
+   its own deletion is still caught (README `[W7]`). *)
+
+
+(** [opt_prefixed] *)
+let _op0 = opt_prefixed
+
+
+(** [opt_prefixed_dec] *)
+let _op1 = opt_prefixed_dec
+
+
+(** [opt_prefixed_enc] *)
+let _op2 = opt_prefixed_enc
+
+
+(** [opt_prefixed_roundtrip] *)
+let _op3 = opt_prefixed_roundtrip
+
+
+(** [opt_prefixed_dec_consumed_bound] *)
+let _op4 = opt_prefixed_dec_consumed_bound
+
+
+(** [opt_prefixed_dec_err_bound] *)
+let _op5 = opt_prefixed_dec_err_bound
 #pop-options
