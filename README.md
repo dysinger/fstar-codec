@@ -290,9 +290,9 @@ reject `" 1"`: the strict reader does not ignore ignorable characters.
 overlong LEB128 (`[0x80;0x00]` is not `0`; `enc 0 = [0x00]`) and leading zeros.
 Without this the backward direction is **false**, not merely unproved, and no
 amount of proof work fixes it. `[D12]` is the digit case; this is the general
-obligation. Planned/landing: decoder changes verified; both laws **not yet
-proved** (`[W8]`). The Pulse/C decoder must be changed in lockstep or the
-extracted C disagrees with the pure spec.
+obligation. Planned/landing: decoder changes verified; `digits_to_int`'s
+forward law **proved**, the rest **not yet proved** (`[W8]`). The Pulse/C decoder
+must be changed in lockstep or the extracted C disagrees with the pure spec.
 
 ### Strengthenings (we complete the paper, without changing its meaning)
 
@@ -375,7 +375,8 @@ thread as conjunction elimination instead of an unprovable prefix-closure step.
 _true_ rather than _conditional on the input_. Weakens nothing: it removes
 accepted inputs, adds no hypothesis, and shrinks no domain. It is the answer to
 the paper's own §6.4 `integer` defect (`[D12]`), which the paper leaves unstated.
-Status: decoders verified, laws open (`[W8]`).
+Status: decoders verified; `digits_to_int`'s forward law **proved** on the
+canonical decoder, the remaining laws open (`[W8]`).
 
 **[S9] _(shipped)_ The paper's `integer` law _failure is named and fixed_.**
 §6.4's `integer` accepts `"01"` while `show′ 1 = "1"`, so its `Iso` field is a
@@ -464,16 +465,30 @@ F\* has three lemma-declaration forms (`let`, `let rec`, and Pulse's `fn`), so
 coverage is now checked with `^(let|let rec|fn) lemma_` and confirmed by
 deletion, never by grep alone.
 
-**[W8] The `[D12]`/`[D13]` canonical readers are _verified, but their laws are
-not yet proved_.**
+**[W8] The `[D12]`/`[D13]` canonical readers are _verified_; one leaf's forward
+law is now _proved_, the rest are open.**
 The two canonical decoders are written and _provably reject_ their witnesses
 (`varint` `[0x80;0x00]` -> `None`; `digits_to_int` `"01"` -> `None`), with
-canonical forms intact, at default rlimit and 0 admit. But `law_fwd` and `law_bwd`
-over the _canonical_ decoders are **open**, and the Pulse/C decoder is **not yet
-updated** — so until both land, the C path still accepts what the pure spec would
-reject. Stated here rather than buried: recording `[D12]`/`[D13]` as _done_ before
-the laws close would be exactly the "prose that outruns the checker" failure this
-document exists to avoid.
+canonical forms intact, at default rlimit and 0 admit.
+
+Progress since this entry was written: **`digits_to_int`'s `law_fwd` is proved**
+on the canonical decoder (the spike suite's `probe-f42/DIGITS_PEEL.fst`, 0
+admit, default rlimit) — a recursive peel showing that decoding `digits_encode n`
+consumes exactly `|digits_encode n|` and returns `n`. Open: `varint`'s `law_fwd`,
+**both** leaves' `law_bwd`/CANON, and the Pulse/C decoder, which is **not yet
+updated** — so until those land the C path still accepts what the pure spec
+would reject. Stated here rather than buried: recording `[D12]`/`[D13]` as
+_done_ before the laws close would be exactly the "prose that outruns the
+checker" failure this document exists to avoid.
+
+Two side conditions this work measured, both stricter than intuition:
+- the decoder stops cleanly only if the remainder is empty **or** at least one
+  digit was already consumed (at index 0 a non-digit is a _rejection_, not a
+  stop), so `law_fwd`'s `rest_cond_v` is per-leaf, not uniform;
+- SMT will _prove_ a decoder's unfolded equation but will **not** derive it from
+  the call, so such proofs are stated one step at a time — which is also why
+  this file's own `lemma_varint_enc_dec_{1..5}byte` are five concrete lemmas
+  rather than one induction.
 
 **[W9] _No lenient input layer_.**
 `[D12]` rejects non-canonical digits rather than tolerating them, so a caller that
