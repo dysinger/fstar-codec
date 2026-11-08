@@ -491,6 +491,22 @@ would reject. Stated here rather than buried: recording `[D12]`/`[D13]` as
 _done_ before the laws close would be exactly the "prose that outruns the
 checker" failure this document exists to avoid.
 
+Partial progress since this entry was written, stated as _partial_ because
+`law_bwd` itself is still unproved on both leaves:
+
+- `digits_to_int` — the byte-count half of CANON is proved
+  (`probe-f42/DIGITS_CANON.fst`, `lemma_digits_canon_len`: a successful decode
+  consumed exactly `ndigits v`). What remains is that the consumed prefix
+  re-encodes, `slice s 0 q == seq_of_list (digits_encode v)`.
+- `varint` — the consumed count, the terminating last byte, the upper bound
+  `v < 2^(7q)`, and the two directions of the `nbytes` threshold table are
+  proved (`probe-f42/VARINT_CANON.fst`). What remains is the value's lower
+  bound, `q >= 2 ==> v >= 2^(7(q-1))`.
+
+Neither module is in the spike runner yet, deliberately: each holds only the
+lemmas that verify, so adding one now would gate a file that does not yet prove
+CANON. A lemma that is absent cannot be mistaken for a lemma that is proved.
+
 Two side conditions this work measured, both stricter than intuition:
 - the decoder stops cleanly only if the remainder is empty **or** at least one
   digit was already consumed (at index 0 a non-digit is a _rejection_, not a
