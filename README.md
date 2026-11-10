@@ -295,6 +295,19 @@ laws **proved** (`law_fwd` for `varint` and for `digits_to_int`), the backward
 laws (`law_bwd`/CANON) **not yet proved** (`[W8]`). The Pulse/C decoder
 must be changed in lockstep or the extracted C disagrees with the pure spec.
 
+⚠ **The word "exactly" is aspirational, not yet true — and one gap is now a
+_proved defect_.** `digits_to_int` accepts the **empty input** (`""` decodes to
+`0`, consuming 0 bytes) while `enc 0 = "0"` is one byte, so `law_bwd` is
+**false** there. This is a third instance of the same class, and a different
+shape from the other two: F39/F40 are permissiveness about a number's
+_representation_, this is permissiveness about its _presence_. The canonical
+decoder inherits it (it is one guard away). Fix measured and behaviour-preserving
+on the image (`src/` **unchanged** pending the change's own gate); the defect
+itself is proved for **both** decoders in
+`codec-strict-isomorphism/probe-f42/DIGITS_EMPTY.fst` (in the spike runner),
+and recorded as `research.md` F61 §3 and §5. `varint` is **not** affected — it
+returns `None` on empty input (`varint_rejects_empty`, same module).
+
 ### Strengthenings (we complete the paper, without changing its meaning)
 
 Each entry is marked **_(shipped)_** if it holds of `src/` as committed, or
@@ -467,7 +480,8 @@ coverage is now checked with `^(let|let rec|fn) lemma_` and confirmed by
 deletion, never by grep alone.
 
 **[W8] The `[D12]`/`[D13]` canonical readers are _verified_; both leaves' forward
-laws are now _proved_, the backward laws are open.**
+laws are now _proved_, the backward laws are open — and for `digits_to_int`
+provably _false_ on the empty input.**
 The two canonical decoders are written and _provably reject_ their witnesses
 (`varint` `[0x80;0x00]` -> `None`; `digits_to_int` `"01"` -> `None`), with
 canonical forms intact, at default rlimit and 0 admit.
@@ -490,22 +504,28 @@ yet** updated — so until those land the C path still accepts what the pure spe
 would reject. Stated here rather than buried: recording `[D12]`/`[D13]` as
 _done_ before the laws close would be exactly the "prose that outruns the
 checker" failure this document exists to avoid.
-
 Partial progress since this entry was written, stated as _partial_ because
-`law_bwd` itself is still unproved on both leaves:
+`law_bwd` itself is still unproved or false on both leaves:
 
-- `digits_to_int` — the byte-count half of CANON is proved
-  (`probe-f42/DIGITS_CANON.fst`, `lemma_digits_canon_len`: a successful decode
-  consumed exactly `ndigits v`). What remains is that the consumed prefix
-  re-encodes, `slice s 0 q == seq_of_list (digits_encode v)`.
+- `digits_to_int` — **both** halves of CANON are now proved, and `law_bwd` is
+  assembled (`probe-f42/DIGITS_CANON.fst`, rlimit 40, 0 admit): the byte count
+  (`lemma_digits_canon_len`) and the re-encoding bridge
+  (`lemma_prefix_enc`). The bridge needed a **front peel in value space over a
+  general accumulator**, not the end peel: the no-leading-zero fact is about
+  the *head* and does not survive peeling the tail. **But the assembly carries
+  `|s| >= 1`, and that is a real defect's boundary, not a proof convenience** —
+  the decoder accepts the empty input, where `law_bwd` is **false** (see
+  `[D13]`). So this leaf is proved *modulo one decoder branch*, not closed.
 - `varint` — the consumed count, the terminating last byte, the upper bound
   `v < 2^(7q)`, and the two directions of the `nbytes` threshold table are
   proved (`probe-f42/VARINT_CANON.fst`). What remains is the value's lower
   bound, `q >= 2 ==> v >= 2^(7(q-1))`.
 
-Neither module is in the spike runner yet, deliberately: each holds only the
-lemmas that verify, so adding one now would gate a file that does not yet prove
-CANON. A lemma that is absent cannot be mistaken for a lemma that is proved.
+Neither module is in the spike runner yet, deliberately: `DIGITS_CANON`'s
+`law_bwd` is conditional on the empty-input fix and `VARINT_CANON` is missing
+its lower bound, so adding either now would gate a file that does not yet prove
+CANON *unconditionally*. A lemma that is absent cannot be mistaken for a lemma
+that is proved.
 
 Two side conditions this work measured, both stricter than intuition:
 - the decoder stops cleanly only if the remainder is empty **or** at least one
