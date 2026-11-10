@@ -301,12 +301,21 @@ _proved defect_.** `digits_to_int` accepts the **empty input** (`""` decodes to
 **false** there. This is a third instance of the same class, and a different
 shape from the other two: F39/F40 are permissiveness about a number's
 _representation_, this is permissiveness about its _presence_. The canonical
-decoder inherits it (it is one guard away). Fix measured and behaviour-preserving
-on the image (`src/` **unchanged** pending the change's own gate); the defect
-itself is proved for **both** decoders in
-`codec-strict-isomorphism/probe-f42/DIGITS_EMPTY.fst` (in the spike runner),
-and recorded as `research.md` F61 §3 and §5. `varint` is **not** affected — it
-returns `None` on empty input (`varint_rejects_empty`, same module).
+decoder inherits it (it is one guard away). The defect is proved for **both**
+decoders in `codec-strict-isomorphism/probe-f42/DIGITS_EMPTY.fst` (in the spike
+runner); `research.md` F61 §3 and F62 record it. `varint` is **not** affected —
+it returns `None` on empty input (`varint_rejects_empty`, same module).
+
+**Decided: tighten the decoder** (change task T1.7f; `src/` still unchanged, the
+fix is gated inside the change). The criterion is the same one that separates
+the other two witnesses from this one: two spellings are equivalent iff the
+difference carries no information. `"01"` and `[0x80;0x00]` are redundant
+spellings of a **present** value — padding, which a normaliser could recover.
+`""` is the **absence** of a numeral, and no total idempotent `norm` maps it
+into `0`'s class without claiming "no digits" *is* "the digit `0`". **Absence is
+not a quotient case; it is not in the language.** Any leniency, ever, belongs in
+a normalising layer *outside* the codec (`[W9]`), never in a weakened law —
+which is also why it stays off the C hot path.
 
 ### Strengthenings (we complete the paper, without changing its meaning)
 
@@ -481,7 +490,8 @@ deletion, never by grep alone.
 
 **[W8] The `[D12]`/`[D13]` canonical readers are _verified_; both leaves' forward
 laws are now _proved_, the backward laws are open — and for `digits_to_int`
-provably _false_ on the empty input.**
+provably _false_ on the empty input, whose decoder fix is decided (T1.7f) but
+not yet in `src/`.**
 The two canonical decoders are written and _provably reject_ their witnesses
 (`varint` `[0x80;0x00]` -> `None`; `digits_to_int` `"01"` -> `None`), with
 canonical forms intact, at default rlimit and 0 admit.
