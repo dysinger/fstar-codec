@@ -449,10 +449,16 @@ This obligation is **not in `src/`**: the legacy `map_` has a one-way
 obligation appears only when `map_` is restated against `codec_v2`, which the
 spike suite does and `src/` has not.
 
-**[W6] The C execution path covers _8 leaves_, not the library.**
+**[W6] The C execution path covers _8 leaves_, not the library — an open gap,
+not a boundary.**
 `product`, `alt`, `sep_by1*`, `take_until`, `opt_prefixed`, `satisfy_many*` have a
 pure spec and **no C path**. "The library extracts to C" is true of the leaves
-only.
+only, and a composite codec is a real workload for any consumer that parses a
+message with more than one field. Growing the C tier to cover the structural
+combinators is a **stated goal of this project**, not a limitation being accepted:
+the delivery criterion is a codec that runs its real workloads in C. Today the
+honest reading is "the leaves extract and are fast"; the composites have a
+specification and an OCaml model.
 
 **[W7] _(repaired — retained as the record of the hole, because the repair
 itself failed once)_ A green build did not mean the lemmas were protected, and
@@ -546,14 +552,37 @@ Two side conditions this work measured, both stricter than intuition:
   this file's own `lemma_varint_enc_dec_{1..5}byte` are five concrete lemmas
   rather than one induction.
 
-**[W9] _No lenient input layer_.**
-`[D12]` rejects non-canonical digits rather than tolerating them, so a caller that
-must accept `"01"` gets an error. The `/lean-codec` `decodeNormal` mechanism
-(`[D4]` there) places that toleration _outside_ the `Iso` as a separately-proved
-artifact; this library has **not built it**, and building it is bounded by the
-normalizer being length-preserving (so a value whose lax spelling differs in
-_length_ — `[0x80;0x00]` -> `0` — is not expressible by it at all; that input is
-malformed, not a spelling).
+**[W9] _No lenient input layer_ — and this is a gap against the paper, not a
+refinement of it.**
+
+The paper's inverse law is meant to be read **"modulo equivalence classes"**
+(§3.1): "a partial isomorphism maps strings of blanks of arbitrary length to a
+unit value but maps the unit value back to a string of blanks of length one".
+§6.3's `skipSpace` / `optSpace` / `sepSpace` are the machinery, and the paper
+uses it freely. **`codec` has not built that layer.** Today `[D12]` rejects
+`"01"` rather than stripping it, and a caller that must accept lax input gets an
+error.
+
+The intended shape is the `/lean-codec` `decodeNormal` one (`[D4]` there): a
+normalising layer **outside** the codec, separately proved, which strips
+information-free noise and then applies the strict codec. That is how the paper's
+equivalence-class reading is recovered without weakening the core law — the
+lenient view is a *different object*, not a relaxed `Iso`, and leniency stays off
+the C hot path by construction.
+
+Two bounds on that layer, both established by this library's own findings:
+
+- it can only strip **redundant spellings** — `"01"` and `[0x80;0x00]` are
+  over-padded spellings of a *present* value, which a normaliser can quotient;
+  the **empty input** is the *absence* of a numeral and is not a spelling at all
+  (`[D13]`, F61/F62);
+- a normaliser that is length-preserving cannot express a value whose lax spelling
+  differs in *length* (`[0x80;0x00]` -> `0`), so that input stays malformed rather
+  than becoming a spelling.
+
+This is **scheduled work, not a caveat**: it is the paper-faithfulness half of the
+project's goal, and it is blocked only by ordering — the lenient layer's proof
+consumes the strict codec's law, so it lands after `[W8]` closes.
 
 **[W10] _The C tier's domain is narrower than the pure spec's_.**
 `varint.wfcv` admits `[0, 2^35)` (`Data.Codec.Types.fst`, in the `varint`
@@ -568,7 +597,9 @@ The source calls the headroom intentional ("typical protocols which only need
 between the specification and the artifact, and it is stated here rather than
 cited as a capability. Narrowing `wfcv` to `[0, 2^32)` is a design decision for
 `codec-strict-isomorphism`, not a documentation repair; until it is made, this
-entry stands.
+entry stands — and it is **open work, not a settled limitation**, because a codec
+whose C path cannot round-trip part of its own domain is not the artifact the
+delivery goal describes.
 
 ### Open problem
 
@@ -592,13 +623,13 @@ precisely that the "which answer did we pick" fact is _unprovable_, not merely
 unproved.
 
 **Verdict: rejected for this library's delivery goal.** The benefit `[O1]` buys is
-a purely specification-side guarantee — an unconditional law. No C consumer can
-observe it: `[W6]` already bounds what the C tier covers, and the C artifact is
-unchanged by whether `dec_spec` returns a list. Paying a doubled surface and a
-per-node bridge for a guarantee the product cannot exhibit is the wrong trade. It
+a purely specification-side guarantee — an unconditional law. The C artifact is
+unchanged by whether `dec_spec` returns a list, and the delivery goal is
+"correct in code, fast in C": doubling the combinator surface and adding a
+per-node bridge obligation buys a guarantee the *product* cannot exhibit. It
 remains recorded so the gap against the paper is a **decision, not an omission** —
 and so the route is available if the goal ever becomes "specification parity with
-the paper" rather than "a verified codec that compiles to C".
+the paper" rather than "a verified codec that compiles to C and runs at C speed".
 
 ### What this library claims, and what it does not
 
@@ -613,13 +644,25 @@ anchoring of lemmas against deletion is begun (`[S6]`). Two further completions 
 `codec_v2` **targets**, not shipped: the structural consumed-byte bound (`[S2]`)
 and the exact direction-split stopping condition (`[S7]`).
 
-**Given up.** An unconditional law (`[W1]`), structural rather than solver-borne
-invertibility (`[W2]`), `enc` partiality enforced by the type (`[W3]`),
-backtracking and a caller-free `many` (`[W4]`), a `map_` needing no retract
-obligation (`[W5]`, a `codec_v2` target), a C path for every combinator rather
-than 8 leaves (`[W6]`), complete anchor coverage (`[W7]`), the numeral readers'
-laws (`[W8]`), a lenient input layer (`[W9]`), and a C domain as wide as the pure
-spec's (`[W10]`). These are losses, not trades dressed as gains.
+**Given up — for now, and each with a destination.** These are open gaps, not
+settled losses; the project's goal is that every one of them closes.
+
+| # | gap | where it closes |
+|---|---|---|
+| `[W1]` | an unconditional law | not achievable while the C path stays single-answer (see `[O1]`) |
+| `[W2]` | structural rather than solver-borne invertibility | needs an inductive `Codec` or `[O1]`; both argued against on extraction grounds |
+| `[W3]` | `enc` partiality enforced by the type | `codec_v2`'s `a -> option byte_seq` |
+| `[W4]` | backtracking and a caller-free `many` | inherent to `[D2]`; avoided cost is the paper's §4.4 |
+| `[W5]` | a `map_` needing no retract obligation | `codec_v2` target |
+| `[W6]` | **a C path for every combinator**, not 8 leaves | scheduled — the C tier grows; this is a stated goal |
+| `[W7]` | complete anchor coverage | closed for the current lemma set; guarded by `[S6]` |
+| `[W8]` | the numeral readers' `law_bwd` | open — ledger item 4 |
+| `[W9]` | **a lenient / noise-stripping layer** | scheduled — the paper-faithfulness half; lands after `[W8]` |
+| `[W10]` | **a C domain as wide as the pure spec's** | scheduled — a design decision for `codec-strict-isomorphism` |
+
+The three marked **scheduled** are the ones the delivery goal names: paper
+faithfulness (`[W9]`) and C reach + C speed (`[W6]`, `[W10]`). They are listed as
+gaps because they *are* gaps today; they are not caveats to be lived with.
 
 **Departed from the paper, and why.** A single-answer decoder (`[D2]`), tag-first
 `alt` (`[D3]`), a record rather than a typeclass-based description (`[D5]`), a
@@ -849,8 +892,9 @@ law_fwd : enc x = Some e /\ wfcv x /\ rest_cond_v x r ==> dec (e ++ r) = Some (x
 law_bwd : dec s = Some (v, r) ==> exists e. enc v = Some e /\ s == e ++ r
 ```
 
-**Every structural combinator is proved.** The spike suite verifies **28 modules**
-with 0 admits, plus 3 asserted refutations that must fail. Status per combinator:
+**Every structural combinator is proved.** The spike suite verifies **43 modules**
+with 0 admits, plus 3 asserted refutations that must fail (measured
+2026-11-09: `spike-run.sh`, exit 0). Status per combinator:
 
 | Combinator | `law_bwd` | `law_fwd` |
 |---|---|---|
@@ -860,16 +904,17 @@ with 0 admits, plus 3 asserted refutations that must fail. Status per combinator
 | greedy `satisfy_many0` | ✅ | ✅ |
 | `count` (positional) | ✅ | ✅ |
 | `map_` | ✅ w/ `map_law_bwd_on_image` (the `retract` hypothesis) | ✅ w/ the folded guard |
-| `text` | not yet proved (swept canonical, so statable) | not yet proved |
-| `varint` | ⛔ **FALSE** over the library's decoder — overlong LEB128 (`[D13]`) | ✅ at full `wfcv = [0, 2^35)` — but see `[W10]`: the C path only reaches 2^32 |
-| `digits_to_int` | ⛔ **FALSE** over the library's decoder — leading zero (`[D12]`) | — |
+| `text` | ✅ | ✅ |
+| `varint` | ⛔ **FALSE** over the library's decoder — overlong LEB128 (`[D13]`); over the **canonical** reader: open (the value's lower bound, F60) | ✅ over the canonical reader, at full `wfcv = [0, 2^35)` — but see `[W10]`: the C path only reaches 2^32 |
+| `digits_to_int` | ⛔ **FALSE** over the library's decoder — leading zero (`[D12]`) **and** the empty input (`[D13]`, F61); over the **canonical** reader: open (CANON is conditional on the empty-input fix, T1.7f) | ✅ over the canonical reader |
 
 **Nothing is migrated into `src/` yet** — `codec_v2` is declared there and proved
 in the spike suite, but no combinator in `src/` uses it. `[W8]` is therefore open,
 and it stays open until all of the following land:
 
-1. `law_fwd`/`law_bwd` over the two canonical numeral readers (items 3–4 of the
-   change's obligation ledger);
+1. `law_bwd` (CANON) over the two canonical numeral readers — **this is what is
+   still open**; both leaves' `law_fwd` are **proved** (items 3 of the change's
+   obligation ledger is done, item 4 is not);
 2. `Data.Codec.Pulse`'s `varint_decode_expected` canonicalised in lockstep;
 3. the extracted C measured rather than estimated.
 
@@ -889,6 +934,11 @@ and it stays open until all of the following land:
   | `Data.Codec.Text` | `text : string -> codec string`, UTF-8/ASCII bridge | OCaml only |
   | `Data.Codec` | facade: re-exports, long-name aliases, operators | OCaml only |
   | `Data.Codec.Pulse` | 8-leaf `codec_t`, the `fn`s and their roundtrip lemmas | **C, OCaml, F#** |
+
+  The 91 above is `Types` alone; the **105** below is the whole library — the
+  two are different counts, not a contradiction.  `Types` has 91 (60
+  `let lemma_*` + 31 `let rec lemma_*`); the remaining 14 are 2 in `Text`, 2
+  in the facade, and 9 Pulse `fn lemma_*`.
 
   **105 lemmas, 0 admits** — 65 `let lemma_*` + 31 `let rec lemma_*` + 9
   `fn lemma_*` (there is no single grep that finds all three; the counting
@@ -956,18 +1006,48 @@ shipped artifact rather than an intention. The dispatch surface is a tag
 comparison, not a closure call, because Custard emits neither closures nor sum
 types.
 
+### What the artifact actually is
+
+This is not a specification that happens to be extractable — **the C is the
+product.** `nix build .#native` emits, from `src/Data.Codec.Pulse.fst`:
+
+| artifact | contents |
+|---|---|
+| `libcodec.dylib` / `.so` / `.a` | the 8-leaf encoder/decoder dispatch, C11 |
+| `codec.h` | `encode_bytes` / `decode_bytes`, `uint8_t*` buffers + `u32` offsets |
+| entry points | `Data_Codec_Pulse_encode_bytes`, `Data_Codec_Pulse_decode_bytes` |
+
+The runtime shape is a caller-owned buffer and a `u32` cursor: no allocation,
+no closures, no sum types (the dispatcher is a tag comparison — `[D11]`). That
+shape is why the library exists: it is what lets a consumer call the codec from
+a server's hot path instead of allocating a value per message.
+
+### The speed criterion, and its current status
+
+The criterion is **"correct in code and fast in C — close to hand-written C"**.
+This is a **requirement of the work, not an aspiration**: it is the premise that
+eliminated two of the three candidate routes to the strict law. It is also
+**currently unmet in two measurable ways**, both open in the change's obligation
+ledger:
+
+| gap | state |
+|---|---|
+| **the C path covers 8 leaves, not the library** (`[W6]`) | `product`, `alt`, `sep_by1*`, `take_until`, `opt_prefixed`, `satisfy_many*` have a pure spec and **no C path** |
+| **the C tier's domain is narrower than the spec's** (`[W10]`) | pure `varint.wfcv` is `[0, 2^35)`; the C path is `U32.t`-valued, i.e. `[0, 2^32)` |
+| **the cost of the strict-law migration is unmeasured** (ledger item 6) | no benchmark harness exists in this repository; the added work is one comparison on an already-loaded register (an *estimate*, not a result) |
+
+Until a measurement exists, this document makes **no throughput claim**. A
+number invented here would be precisely the defect the migration exists to
+remove. The honest reading is: the artifact is built, linked and callable today;
+its *speed relative to hand-written C* has not been established by this
+repository, and closing that gap is scheduled work, not a caveat.
+
 ### What is _not_ yet measured
 
-The criterion for this work is "correct in code and fast in C", and the honest
-position is that **the C cost of the migration is not yet measured** — it is item
-6 of the change's obligation ledger and part of `[W8]`. `varint`'s
-canonicalisation adds one comparison on an already-loaded register (rejecting a
-non-final zero group); that is an _estimate_ until the extracted C is inspected
-and timed, and it is recorded as an estimate rather than a result.
-
-Until that measurement exists, this document makes **no throughput claim**. A
-number invented here would be precisely the defect the migration exists to
-remove.
+The pure-spec side is measured by verification (SMT discharge); the C side is
+not measured at all. A claim about emitted code cannot be _derived_ here — no
+law in this repository states anything about it — so it can only be measured or
+labelled unmeasured. It is labelled unmeasured.
 
 ## Getting started
 
