@@ -356,13 +356,13 @@ downstream value type is `string`/`int`/`byte` records.
 Long names (`then_drop`) _and_ operator aliases (`*>`), per `CODE_GUIDELINES.md`;
 `Data.Codec` uses `include` **and** `open` so both reach consumers.
 
-**[S6] _(shipped)_ _102 lemmas, and every one anchored_ against deletion.**
-The count is **102**, and it takes **three** declaration forms — state all three
+**[S6] _(shipped)_ _105 lemmas, and every one anchored_ against deletion.**
+The count is **105**, and it takes **three** declaration forms — state all three
 or the number is wrong:
 
 | form | count | where |
 |---|---|---|
-| `let lemma_*` | 62 | `Types` 57, `Text` 2, facade 2, `Pulse` 1 |
+| `let lemma_*` | 65 | `Types` 60, `Text` 2, facade 2, `Pulse` 1 |
 | `let rec lemma_*` | **31** | all in `Types` |
 | `fn lemma_*` | 9 | `Data.Codec.Pulse` (the eight `lemma_pulse_roundtrip_*` and `lemma_pulse_encode_decode_match`) |
 
@@ -372,7 +372,7 @@ So the two greps that look right both undercount: `grep -c '^let lemma_'` finds
 
 ```bash
 grep -rhoE '^(let|let rec|fn) lemma_[A-Za-z0-9_]+' src/*.fst \
-  | sed -E 's/^(let rec|let|fn) //' | sort -u | wc -l     # => 102
+  | sed -E 's/^(let rec|let|fn) //' | sort -u | wc -l     # => 105
 ```
 
 Re-run it rather than trusting this number. This paragraph exists **because
@@ -380,7 +380,7 @@ this document got it wrong twice** (76, then 71 — each a plausible number that
 plausible grep produced); see `[W7]`. Note also that F\* comments nest, so a
 naive `\(\*.*?\*\)` stripper closes at an inner `*)`.
 
-Anchoring is **complete**: all 102 are referenced by `Data.Codec.Test.
+Anchoring is **complete**: all 105 are referenced by `Data.Codec.Test.
 Integration`, so deleting any of them fails the build. Before `codec-audit-fixes`
 that was false in three separate ways (nine unanchored, five of them dead code;
 and the four `let rec` lemmas below, which the `^let` sweep could not see).
@@ -885,12 +885,12 @@ and it stays open until all of the following land:
 
   | Module | Role | Extracts to |
   |---|---|---|
-  | `Data.Codec.Types` | the record `codec a`, all combinators on bytes, 88 lemmas | OCaml only (pure spec) |
+  | `Data.Codec.Types` | the record `codec a`, all combinators on bytes, 91 lemmas | OCaml only (pure spec) |
   | `Data.Codec.Text` | `text : string -> codec string`, UTF-8/ASCII bridge | OCaml only |
   | `Data.Codec` | facade: re-exports, long-name aliases, operators | OCaml only |
   | `Data.Codec.Pulse` | 8-leaf `codec_t`, the `fn`s and their roundtrip lemmas | **C, OCaml, F#** |
 
-  **102 lemmas, 0 admits** — 62 `let lemma_*` + 31 `let rec lemma_*` + 9
+  **105 lemmas, 0 admits** — 65 `let lemma_*` + 31 `let rec lemma_*` + 9
   `fn lemma_*` (there is no single grep that finds all three; the counting
   command is in `[S6]`). No `admit`, no `assume val` anywhere in
   `src/`; `make check` verifies **7 modules**. The 121 pure roundtrip/error-path

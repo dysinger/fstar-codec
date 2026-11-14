@@ -725,6 +725,58 @@ let lemma_slice_cons_spec (#a:Type) (x: a) (s: Seq.seq a) : Lemma
 #pop-options
 
 
+(** Sequence equality from pointwise index equality.
+
+    [Seq.lemma_eq_intro] relates two sequences whose lengths and pointwise
+    indices agree, but in a goal that has already fixed the two slices the
+    lengths are the parts SMT does not recover.  Stating them as an explicit
+    hypothesis (with [n] threaded) makes the step reusable. *)
+#push-options "--z3rlimit 40"
+let lemma_eq_of_pointwise (#a:Type) (s1 s2: Seq.seq a) (n: nat) : Lemma
+  (requires
+    Seq.length s1 == n /\
+    Seq.length s2 == n /\
+    (forall (j: nat). j < n ==> Seq.index s1 j == Seq.index s2 j))
+  (ensures Seq.equal s1 s2)
+  = Seq.lemma_eq_intro s1 s2
+#pop-options
+
+
+(** Index of a one-off slice: [Seq.index (Seq.slice s 1 |s|) j == Seq.index s (j + 1)].
+
+    Bridges a tail's index to the whole's index.  The fact itself is the stdlib's
+    [FStar.Seq.Base.lemma_index_slice] (an [SMTPat] on [index (slice s i j) k]);
+    this wrapper exists to name it, so that a proof that walks a tail can cite
+    one lemma instead of depending on a trigger firing. *)
+#push-options "--z3rlimit 40"
+let lemma_index_slice_succ (#a:Type) (s: Seq.seq a) (j: nat) : Lemma
+  (requires 1 + j < Seq.length s)
+  (ensures Seq.index (Seq.slice s 1 (Seq.length s)) j == Seq.index s (j + 1))
+  = Seq.lemma_index_slice s 1 (Seq.length s) j;
+    assert (Seq.index (Seq.slice s 1 (Seq.length s)) j == Seq.index s (j + 1))
+#pop-options
+
+
+(** Tail of a one-off slice: [slice (slice s 1 |s|) 1 |s|-1 == slice s 2 |s|].
+
+    The recursion that walks a tail reaches the tail of the tail, so the induction
+    hypothesis must be applied at the *syntactic* sequence [slice s 1 (|s|)].
+    [Seq.Properties.slice_slice] supplies this equation only as
+    [slice s 1 (0 + (|s| - 1))], which does not match the endpoint [|s|]; the
+    pointwise form below does. *)
+#push-options "--z3rlimit 40"
+let lemma_slice_tail (#a:Type) (s: Seq.seq a) : Lemma
+  (requires 2 <= Seq.length s)
+  (ensures Seq.equal
+    (Seq.slice (Seq.slice s 1 (Seq.length s)) 1 (Seq.length s - 1))
+    (Seq.slice s 2 (Seq.length s)))
+  = let outer = Seq.slice s 1 (Seq.length s) in
+    let lhs = Seq.slice outer 1 (Seq.length s - 1) in
+    let rhs = Seq.slice s 2 (Seq.length s) in
+    lemma_eq_of_pointwise lhs rhs (Seq.length s - 2)
+#pop-options
+
+
 (** bytes self-prefix *)
 #push-options "--z3rlimit 80"
 let rec lemma_bytes_self_prefix_spec (bs: list byte) (r: byte_seq) : Lemma

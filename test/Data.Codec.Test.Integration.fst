@@ -859,6 +859,18 @@ let _s1 = lemma_slice_append_prefix
 let _s2 = lemma_slice_cons_spec
 
 
+(** [lemma_eq_of_pointwise] *)
+let _pt0 = lemma_eq_of_pointwise
+
+
+(** [lemma_index_slice_succ] *)
+let _pt1 = lemma_index_slice_succ
+
+
+(** [lemma_slice_tail] *)
+let _pt2 = lemma_slice_tail
+
+
 (** [lemma_bytes_self_prefix_spec] *)
 let _s3 = lemma_bytes_self_prefix_spec
 
