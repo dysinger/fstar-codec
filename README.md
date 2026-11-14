@@ -278,7 +278,10 @@ reject `" 1"`: the strict reader does not ignore ignorable characters.
 - `law_bwd` is **not weakened** — it becomes _true_, where before it was false.
 - Lenient parsing is **not deleted as a capability**: it belongs _outside_ the
   codec, as a separately-proved layer (the `/lean-codec` `decodeNormal` pattern,
-  `[D4]` there). This library has not built that layer; `[W9]` records it.
+  `[D4]` there). **That layer is now built** — `Data.Codec.Normal` (`[W9]`),
+  which names the quotient as a type so the lax spelling and the strict value are
+  the same value in one class, and `decodeNormal`'s obligation is stated
+  as a lemma rather than assumed.
 - **Not the same as `ignore`**: `ignore` is unreachable _because it is
   constant_ (`[D4]`). A leading-zero-tolerant reader is reachable — it is a
   partial iso on a laxer input syntax — but it is a **different object** from
@@ -356,14 +359,14 @@ downstream value type is `string`/`int`/`byte` records.
 Long names (`then_drop`) _and_ operator aliases (`*>`), per `CODE_GUIDELINES.md`;
 `Data.Codec` uses `include` **and** `open` so both reach consumers.
 
-**[S6] _(shipped)_ _105 lemmas, and every one anchored_ against deletion.**
-The count is **105**, and it takes **three** declaration forms — state all three
+**[S6] _(shipped)_ _123 lemmas, and every one anchored_ against deletion.**
+The count is **123**, and it takes **three** declaration forms — state all three
 or the number is wrong:
 
 | form | count | where |
 |---|---|---|
-| `let lemma_*` | 65 | `Types` 60, `Text` 2, facade 2, `Pulse` 1 |
-| `let rec lemma_*` | **31** | all in `Types` |
+| `let lemma_*` | 82 | `Types` 60, `Normal` 5, `Normal.Bytes` 13, `Text` 2, facade 2 |
+| `let rec lemma_*` | **32** | `Types` 31, `Normal.Bytes` 1 |
 | `fn lemma_*` | 9 | `Data.Codec.Pulse` (the eight `lemma_pulse_roundtrip_*` and `lemma_pulse_encode_decode_match`) |
 
 So the two greps that look right both undercount: `grep -c '^let lemma_'` finds
@@ -372,7 +375,7 @@ So the two greps that look right both undercount: `grep -c '^let lemma_'` finds
 
 ```bash
 grep -rhoE '^(let|let rec|fn) lemma_[A-Za-z0-9_]+' src/*.fst \
-  | sed -E 's/^(let rec|let|fn) //' | sort -u | wc -l     # => 105
+  | sed -E 's/^(let rec|let|fn) //' | sort -u | wc -l     # => 123
 ```
 
 Re-run it rather than trusting this number. This paragraph exists **because
@@ -380,7 +383,7 @@ this document got it wrong twice** (76, then 71 — each a plausible number that
 plausible grep produced); see `[W7]`. Note also that F\* comments nest, so a
 naive `\(\*.*?\*\)` stripper closes at an inner `*)`.
 
-Anchoring is **complete**: all 105 are referenced by `Data.Codec.Test.
+Anchoring is **complete**: all 123 are referenced by `Data.Codec.Test.
 Integration`, so deleting any of them fails the build. Before `codec-audit-fixes`
 that was false in three separate ways (nine unanchored, five of them dead code;
 and the four `let rec` lemmas below, which the `^let` sweep could not see).
@@ -552,23 +555,38 @@ Two side conditions this work measured, both stricter than intuition:
   this file's own `lemma_varint_enc_dec_{1..5}byte` are five concrete lemmas
   rather than one induction.
 
-**[W9] _No lenient input layer_ — and this is a gap against the paper, not a
-refinement of it.**
+**[W9] _(built — `Data.Codec.Normal`) A lenient layer now exists, as the paper's
+own reading of the law requires, and it is a type rather than a relaxed law.**
 
 The paper's inverse law is meant to be read **"modulo equivalence classes"**
 (§3.1): "a partial isomorphism maps strings of blanks of arbitrary length to a
 unit value but maps the unit value back to a string of blanks of length one".
 §6.3's `skipSpace` / `optSpace` / `sepSpace` are the machinery, and the paper
-uses it freely. **`codec` has not built that layer.** Today `[D12]` rejects
-`"01"` rather than stripping it, and a caller that must accept lax input gets an
-error.
+uses it freely. **`codec` now builds that layer**, in `Data.Codec.Normal`.
 
-The intended shape is the `/lean-codec` `decodeNormal` one (`[D4]` there): a
-normalising layer **outside** the codec, separately proved, which strips
+The shape is the `/lean-codec` `decodeNormal` one (`[D4]` there), carried one
+step further: a normalising layer **outside** the codec, which strips
 information-free noise and then applies the strict codec. That is how the paper's
 equivalence-class reading is recovered without weakening the core law — the
 lenient view is a *different object*, not a relaxed `Iso`, and leniency stays off
 the C hot path by construction.
+
+The quotient lives in the **object**, not the morphism. `normal norm` is the
+fixed-point subtype of an idempotent `norm`, and `lemma_fill_surj` proves it is a
+*bijective copy* of the quotient `s/~` rather than a subset, so the reification
+is faithful. Two spellings are one value exactly when they normalise equally
+(`lemma_fill_inj`) — that is the theorem the padding test rests on. A lax
+spelling of a **present** value is quotiented; the **absence** of a value is not
+a spelling, and stays a rejection.
+
+Both cases the paper's `skipSpace` mixes are available and proved:
+`strip_spaces` is **length-shrinking** (three blanks, one blank and no blank are
+one class — a `Seq` carrier admits this; the length-indexed `Bytes n` carrier of
+`/lean-codec` does not), and `fold_all_upper` is **length-preserving**.
+
+One obligation is added, and it is **per codec**, not per combinator: the encoder
+must emit a normal form (`lemma_dec_normal_encode`). Without it the wrapper is
+*false* — a stripping `norm` can delete the encoder's own byte.
 
 Two bounds on that layer, both established by this library's own findings:
 
@@ -657,11 +675,14 @@ settled losses; the project's goal is that every one of them closes.
 | `[W6]` | **a C path for every combinator**, not 8 leaves | scheduled — the C tier grows; this is a stated goal |
 | `[W7]` | complete anchor coverage | closed for the current lemma set; guarded by `[S6]` |
 | `[W8]` | the numeral readers' `law_bwd` | open — ledger item 4 |
-| `[W9]` | **a lenient / noise-stripping layer** | scheduled — the paper-faithfulness half; lands after `[W8]` |
+| `[W9]` | a lenient / noise-stripping layer | **built** — `Data.Codec.Normal` + `Normal.Bytes` (F72/F73); per-leaf obligation O still open |
 | `[W10]` | **a C domain as wide as the pure spec's** | scheduled — a design decision for `codec-strict-isomorphism` |
 
-The three marked **scheduled** are the ones the delivery goal names: paper
-faithfulness (`[W9]`) and C reach + C speed (`[W6]`, `[W10]`). They are listed as
+The marked **scheduled** rows are the ones the delivery goal names: C reach and
+C speed (`[W6]`, `[W10]`).  Paper faithfulness (`[W9]`) now has its layer built —
+`Data.Codec.Normal` supplies the quotient as a **type**, so the paper's
+"modulo equivalence classes" reading holds with an unconditional law on the
+quotient, and the strict law is untouched. They are listed as
 gaps because they *are* gaps today; they are not caveats to be lived with.
 
 **Departed from the paper, and why.** A single-answer decoder (`[D2]`), tag-first
@@ -935,12 +956,12 @@ and it stays open until all of the following land:
   | `Data.Codec` | facade: re-exports, long-name aliases, operators | OCaml only |
   | `Data.Codec.Pulse` | 8-leaf `codec_t`, the `fn`s and their roundtrip lemmas | **C, OCaml, F#** |
 
-  The 91 above is `Types` alone; the **105** below is the whole library — the
+  The 91 above is `Types` alone; the **123** below is the whole library — the
   two are different counts, not a contradiction.  `Types` has 91 (60
   `let lemma_*` + 31 `let rec lemma_*`); the remaining 14 are 2 in `Text`, 2
   in the facade, and 9 Pulse `fn lemma_*`.
 
-  **105 lemmas, 0 admits** — 65 `let lemma_*` + 31 `let rec lemma_*` + 9
+  **123 lemmas, 0 admits** — 82 `let lemma_*` + 32 `let rec lemma_*` + 9
   `fn lemma_*` (there is no single grep that finds all three; the counting
   command is in `[S6]`). No `admit`, no `assume val` anywhere in
   `src/`; `make check` verifies **7 modules**. The 121 pure roundtrip/error-path

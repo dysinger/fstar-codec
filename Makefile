@@ -41,7 +41,7 @@ FSTAR_FLAGS = --no_default_includes \
 # Data.Codec.Pulse is back in: it was rewritten in Pulse (see AGENTS.md) and
 # verifies/extracts to C11/OCaml/F# (Custard).  The three test modules (Roundtrip pure +
 # Integration anchors + Pulse buffer roundtrips) are wired into TST_MODS below.
-SRC_MODS := Data.Codec.Types Data.Codec.Text Data.Codec Data.Codec.Pulse
+SRC_MODS := Data.Codec.Types Data.Codec.Normal Data.Codec.Normal.Bytes Data.Codec.Text Data.Codec Data.Codec.Pulse
 
 # Pulse-only modules skip re-verification (they ship pre-verified in the F*
 # install); Data.Codec.Pulse opens Pulse.Lib.* which would otherwise time out
@@ -59,7 +59,7 @@ ALREADY_CACHED := Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore
 # roundtrip tests (the 10 Stack-based tests, ported to Pulse — see AGENTS.md),
 # plus the byte-level golden tests (T4.0: literal bytes, so a migration that
 # changes any encoding fails here even though the roundtrip relations hold).
-TST_MODS := Data.Codec.Test.Roundtrip Data.Codec.Test.Bytes Data.Codec.Test.Integration Data.Codec.Test.Pulse
+TST_MODS := Data.Codec.Test.Roundtrip Data.Codec.Test.Bytes Data.Codec.Test.Normal Data.Codec.Test.Integration Data.Codec.Test.Pulse
 
 check: $(addprefix $(OUT)/checked/,$(addsuffix .fst.checked,$(SRC_MODS))) \
        $(addprefix $(OUT)/checked/,$(addsuffix .fst.checked,$(TST_MODS)))
