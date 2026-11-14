@@ -1099,6 +1099,7 @@ Test modules (verified, not extracted):
 | Module | Role |
 |--------|------|
 | `Data.Codec.Test.Roundtrip` | Pure roundtrip and error-path property tests (121). |
+| `Data.Codec.Test.Bytes` | Byte-level **golden** tests (29): literal bytes for every leaf, both directions, plus consumed counts. Catches a migration that moves bytes while keeping the laws. |
 | `Data.Codec.Test.Pulse` | Buffer-based roundtrip + error tests for the Pulse leaf (10). |
 | `Data.Codec.Test.Integration` | Binds every test + lemma, enforcing coverage. |
 

@@ -56,8 +56,10 @@ ALREADY_CACHED := Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore
 # (`subst .,_` here would look for Data_Codec.fst.checked, which F* never
 # writes, leaving `make check` permanently out-of-date.)
 # Test modules: the two coverage/roundtrip modules plus the Pulse buffer
-# roundtrip tests (the 10 Stack-based tests, ported to Pulse — see AGENTS.md).
-TST_MODS := Data.Codec.Test.Roundtrip Data.Codec.Test.Integration Data.Codec.Test.Pulse
+# roundtrip tests (the 10 Stack-based tests, ported to Pulse — see AGENTS.md),
+# plus the byte-level golden tests (T4.0: literal bytes, so a migration that
+# changes any encoding fails here even though the roundtrip relations hold).
+TST_MODS := Data.Codec.Test.Roundtrip Data.Codec.Test.Bytes Data.Codec.Test.Integration Data.Codec.Test.Pulse
 
 check: $(addprefix $(OUT)/checked/,$(addsuffix .fst.checked,$(SRC_MODS))) \
        $(addprefix $(OUT)/checked/,$(addsuffix .fst.checked,$(TST_MODS)))
