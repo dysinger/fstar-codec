@@ -933,8 +933,23 @@ let _dl4 = nat_add
 let _dl5 = nat_incr
 
 
-(** [lemma_digits_decode_shift] *)
-let _dl6 = lemma_digits_decode_shift
+(** [lemma_all_digits_cons] *)
+let _dl6a = lemma_all_digits_cons
+
+(** [lemma_acc_digits_cons] *)
+let _dl6b = lemma_acc_digits_cons
+
+(** [lemma_digits_slice_succ] *)
+let _dl6c = lemma_digits_slice_succ
+
+(** [lemma_digits_block_index] *)
+let _dl6d = lemma_digits_block_index
+
+(** [lemma_digits_walk] *)
+let _dl6e = lemma_digits_walk
+
+(** [lemma_digits_stop_elim] *)
+let _dl6f = lemma_digits_stop_elim
 
 
 (** [lemma_digits_process_list] *)

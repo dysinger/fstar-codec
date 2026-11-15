@@ -806,6 +806,24 @@ let rec lemma_all_digits_append_helper (ds1 ds2: list byte) : Lemma
 
 
 #push-options "--z3rlimit 40"
+(** [lemma_all_digits_cons]: a digit block splits into its head and tail. *)
+#push-options "--z3rlimit 40"
+let lemma_all_digits_cons (d: byte) (tl: list byte)
+  : Lemma
+    (requires all_digits (d :: tl))
+    (ensures is_digit d /\ all_digits tl)
+  = ()
+#pop-options
+
+(** [lemma_acc_digits_cons]: one digit step of the accumulator. *)
+#push-options "--z3rlimit 40"
+let lemma_acc_digits_cons (d: byte) (tl: list byte) (a: int)
+  : Lemma
+    (requires is_digit d)
+    (ensures acc_digits (d :: tl) a == acc_digits tl (a * 10 + (U8.v d - 0x30)))
+  = ()
+#pop-options
+
 (** [lemma_digits_encode_all_digits_helper]: [digits_encode] emits only digit bytes. *)
 let rec lemma_digits_encode_all_digits_helper (n: nat) : Lemma
   (ensures all_digits (digits_encode n))
@@ -857,42 +875,153 @@ let nat_add (a b: nat) : nat = a + b
 let nat_incr (n: nat) : nat = n + 1
 
 
-#push-options "--z3rlimit 80"
-(** [lemma_digits_decode_shift]: digit decoding from an offset shifts by that offset. *)
-let rec lemma_digits_decode_shift
-  (f: int -> bool) (s: byte_seq) (k: nat) (i: nat) (a: int)
+(**
+[lemma_digits_slice_succ]: if [s]'s block of [1 + |tl|] bytes from [i] is
+[d :: tl] as a sequence, then [s]'s block of [|tl|] bytes from [i + 1] is [tl].
+
+This is a SLICE equation, not a decoder equation — which is the whole point of
+the fix: the generalized decoder walk below needs only this, never a shift of
+the decoder's own result.
+*)
+let lemma_digits_slice_succ (d: byte) (tl: list byte) (s: byte_seq) (i: nat)
   : Lemma
-    (requires i < Seq.length s /\ is_digit (Seq.index s i))
+    (requires
+      i + nat_incr (List.Tot.length tl) <= Seq.length s /\
+      Seq.slice s i (i + nat_incr (List.Tot.length tl)) == seq_of_list (d :: tl))
     (ensures
-      digits_to_int_decode_go f s k a i
-      == (match digits_to_int_decode_go f
-                (Seq.slice s i (Seq.length s)) k a 0 with
-          | Inl err -> Inl ({err with err_pos = nat_add err.err_pos i})
-          | Inr (v, n) -> Inr (v, nat_add n i)))
-    (decreases k)
-  = let sliced = Seq.slice s i (Seq.length s) in
-    if k > 0 then begin
-      let b = U8.v (Seq.index s i) in
-      let a' = a * 10 + (b - 0x30) in
-      let cnt1 = nat_incr i in
-      if cnt1 >= Seq.length s then ()
-      else if is_digit (Seq.index s cnt1) then begin
-        let k' : nat = dec_nat k in
-        lemma_digits_decode_shift f s k' cnt1 a';
-        lemma_digits_decode_shift f sliced k' 1 a';
+      Seq.slice s (nat_incr i) (nat_incr i + List.Tot.length tl) == seq_of_list tl)
+  = FStar.Seq.Base.lemma_seq_of_list_cons d tl;
+    FStar.Seq.Base.lemma_create_len 1 d;
+    (* `slice s i (i + 1 + |tl|)` = `d :: tl`, so its tail from `i+1` is `tl`. *)
+    cons_index_slice s i (i + nat_incr (List.Tot.length tl)) (nat_incr i);
+    Seq.lemma_eq_elim
+      (Seq.cons (Seq.index s i) (Seq.slice s (nat_incr i) (i + nat_incr (List.Tot.length tl))))
+      (Seq.slice s i (i + nat_incr (List.Tot.length tl)));
+    Seq.lemma_eq_elim
+      (Seq.slice s i (i + nat_incr (List.Tot.length tl)))
+      (Seq.append (Seq.create 1 d) (seq_of_list tl));
+    (* `slice (d :: tl) 1 (1+|tl|)` is `tl`.  Proved pointwise rather than by
+       an append-slice lemma the stdlib does not provide. *)
+    Seq.lemma_eq_intro
+      (Seq.slice (Seq.append (Seq.create 1 d) (seq_of_list tl)) 1 (nat_incr (List.Tot.length tl)))
+      (seq_of_list tl)
 
-
-        (* The two recursive calls prove that decoding from cnt1 on the full s
-           and from 1 on the sliced s are shift-equivalent to their respective
-           zero-start decodes.  The assert below bridges from (k, a, i) to
-           (k'=dec_nat k, a'=a*10+(b-0x30), cnt1=nat_incr i) in one step. *)
-        assert (digits_to_int_decode_go f s k a i ==
-                digits_to_int_decode_go f s k' a' cnt1);
-        ()
-      end else ()
-    end else ()
+(**
+[lemma_digits_block_index]: the byte at offset [i] of a block equal to
+[seq_of_list ds] is [ds]'s head.  Derived from the slice hypothesis by
+[index_slice] plus [seq_of_list_cons] — no shift of any decoder result.
+*)
+#push-options "--z3rlimit 40"
+let lemma_digits_block_index (ds: list byte) (s: byte_seq) (i: nat)
+  : Lemma
+    (requires
+      Cons? ds /\
+      i + List.Tot.length ds <= Seq.length s /\
+      Seq.slice s i (i + List.Tot.length ds) == seq_of_list ds)
+    (ensures Seq.index s i == List.Tot.hd ds)
+  = let d = List.Tot.hd ds in
+    FStar.Seq.Base.lemma_seq_of_list_cons d (List.Tot.tl ds);
+    Seq.lemma_index_slice s i (i + List.Tot.length ds) 0;
+    FStar.Seq.Base.lemma_index_app1 (Seq.create 1 d) (seq_of_list (List.Tot.tl ds)) 0;
+    FStar.Seq.Base.lemma_index_create 1 d 0
 #pop-options
 
+(**
+[lemma_digits_walk]: **the decoder walk, generalized over the start index.**
+
+This is the fix for `T1.7f.1a` (`research.md` F74/F75): the decoder never leaves
+its sequence — it walks ONE [s] with a growing [i].  So the induction hypothesis
+speaks about the same [s], and no shift of the decoder's result across sequences
+is ever needed.  The old [lemma_digits_decode_shift] is gone.
+
+[s]'s block of [|ds|] bytes from [i] is [ds]; the decoder is called at [(k, a, i)].
+The stopping condition is stated on the byte *after* the block, exactly as the
+top-level version states it on [r]'s first byte.
+*)
+#push-options "--z3rlimit 120"
+let rec lemma_digits_walk
+  (f: int -> bool) (s: byte_seq) (i: nat) (ds: list byte) (k: nat) (a: int)
+  : Lemma
+    (requires
+      Cons? ds /\
+      all_digits ds /\
+      f (acc_digits ds a) /\
+      List.Tot.length ds <= k /\
+      i + List.Tot.length ds <= Seq.length s /\
+      Seq.slice s i (i + List.Tot.length ds) == seq_of_list ds /\
+      (List.Tot.length ds = k \/
+       i + List.Tot.length ds = Seq.length s \/
+       (i + List.Tot.length ds < Seq.length s /\
+        not (is_digit (Seq.index s (i + List.Tot.length ds))))))
+    (ensures
+      digits_to_int_decode_go f s k a i
+      == Inr (acc_digits ds a, i + List.Tot.length ds))
+    (decreases ds)
+  = let n = List.Tot.length ds in
+    match ds with
+    | [d] ->
+      (* one digit left: the block is exactly the byte `d` at `i`. *)
+      lemma_digits_block_index ds s i;
+      if k = 1 then ()
+      else (
+        assert (k - 1 >= 1);
+        ()
+      )
+    | d :: tl ->
+      let d_val = U8.v d - 0x30 in
+      let a' = a * 10 + d_val in
+      let k' : nat = dec_nat k in
+      (* the digit branch: the SAME `s`, index i + 1, budget k - 1 *)
+      lemma_digits_block_index ds s i;
+      lemma_digits_slice_succ d tl s i;
+      lemma_all_digits_cons d tl;
+      lemma_acc_digits_cons d tl a;
+      assert (List.Tot.length tl <= k');
+      assert (f (acc_digits tl a'));
+      lemma_digits_walk f s (nat_incr i) tl k' a';
+      assert (digits_to_int_decode_go f s k' a' (nat_incr i)
+              == Inr (acc_digits tl a', nat_incr i + List.Tot.length tl));
+      assert (digits_to_int_decode_go f s k a i
+              == Inr (acc_digits tl a', nat_incr i + List.Tot.length tl));
+      assert (acc_digits (d :: tl) a == acc_digits tl a');
+      assert (i + List.Tot.length (d :: tl) == nat_incr i + List.Tot.length tl);
+      ()
+#pop-options
+
+
+(**
+[lemma_digits_stop_elim]: eliminates the top-level stopping disjunction into
+the walk's stopping condition.  Where `|r| > 0` the stop byte is `r`'s first,
+which IS `s`'s byte at `|ds|`; where `|r| = 0` the premise's first disjunct must
+hold, i.e. `|ds| = k`.
+*)
+#push-options "--z3rlimit 60"
+let lemma_digits_stop_elim (ds: list byte) (r: byte_seq) (n: nat) (k: nat)
+  : Lemma
+    (requires
+      n = List.Tot.length ds /\
+      n <= k /\
+      (n = k \/
+       Seq.length r = 0 \/
+       (Seq.length r > 0 /\ not (is_digit (Seq.index r 0)))))
+    (ensures
+      (let s = Seq.append (seq_of_list ds) r in
+       (n <= k /\ (n = k \/ n = Seq.length s)) \/
+       (n < Seq.length s /\ not (is_digit (Seq.index s n)))))
+  = let s = Seq.append (seq_of_list ds) r in
+    lemma_seq_of_list_length ds;
+    assert (Seq.length s = n + Seq.length r);
+    if Seq.length r = 0 then begin
+      (* `|s| = n`, so the block ends exactly at the budget boundary; the walk
+         stops there and returns the index `n`. *)
+      assert (Seq.length s = n)
+    end
+    else begin
+      assert (n < Seq.length (seq_of_list ds) + Seq.length r);
+      FStar.Seq.Base.lemma_index_app2 (seq_of_list ds) r n;
+      assert (Seq.index s n == Seq.index r 0)
+    end
+#pop-options
 
 (** lemma_digits_process_list *)
 #push-options "--z3rlimit 80"
@@ -913,40 +1042,10 @@ let rec lemma_digits_process_list
     (decreases ds)
   = let s = Seq.append (seq_of_list ds) r in
     let n = List.Tot.length ds in
-    match ds with
-    | [d] ->
-      if k = 1 then ()
-      else if Seq.length r = 0 then ()
-      else if not (is_digit (Seq.index r 0)) then ()
-      else begin
-        assert (n = 1);
-        assert (k <> 1);
-        assert (Seq.length r > 0);
-        assert (is_digit (Seq.index r 0));
-        assert (False)
-      end
-    | d :: tl ->
-      let k' : nat = dec_nat k in
-      let d_val = U8.v d - 0x30 in
-      let a' = a * 10 + d_val in
-      let tail_input = Seq.append (seq_of_list tl) r in
-      assert (digits_to_int_decode_go f s k a 0 ==
-              digits_to_int_decode_go f s k' a' 1);
-      assert (Seq.equal (Seq.slice s 1 (Seq.length s)) tail_input);
-      assert (is_digit (Seq.index s 1));
-      lemma_digits_decode_shift f s k' 1 a';
-      assert (List.Tot.length tl <= k');
-      assert (f (acc_digits tl a'));
-      lemma_digits_process_list f tl r k' a';
-      assert (digits_to_int_decode_go f tail_input k' a' 0
-              == Inr (acc_digits tl a', List.Tot.length tl));
-      assert (digits_to_int_decode_go f s k' a' 1
-              == Inr (acc_digits tl a', nat_incr (List.Tot.length tl)));
-      assert (digits_to_int_decode_go f s k a 0
-              == Inr (acc_digits tl a', nat_incr (List.Tot.length tl)));
-      assert (acc_digits (d :: tl) a == acc_digits tl a');
-      assert (List.Tot.length (d :: tl) == nat_incr (List.Tot.length tl));
-      ()
+    lemma_seq_of_list_length ds;
+    lemma_digits_stop_elim ds r n k;
+    Seq.lemma_eq_elim (Seq.slice s 0 (0 + n)) (seq_of_list ds);
+    lemma_digits_walk f s 0 ds k a
 #pop-options
 
 
