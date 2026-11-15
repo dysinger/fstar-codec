@@ -21,16 +21,16 @@
     "fstar": {
       "flake": false,
       "locked": {
-        "lastModified": 1790509418,
-        "narHash": "sha256-8GHdnQHjt0LiTwjOVyOhvmV+CICPaGTO8nRpoOAi1lc=",
+        "lastModified": 1794747531,
+        "narHash": "sha256-wjoTPZp+vYrefvT/o1jcjoyPeVsvS5KB1SwBnaoJf6U=",
         "owner": "dysinger",
         "repo": "fstar",
-        "rev": "cf847952b97a5f392ebd8c097e9f548fa93d769a",
+        "rev": "f93999c4a88b30f0b7eb4ad8b60207d1289c0936",
         "type": "github"
       },
       "original": {
         "owner": "dysinger",
-        "ref": "v2026.09.20+lsp",
+        "ref": "v2026.10.25+lsp",
         "repo": "fstar",
         "type": "github"
       }

@@ -9,9 +9,9 @@
     flake-utils.url = "github:numtide/flake-utils";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     fstar = {
-      # Fork of F* with the LSP server ported onto the v2026.09.20 base
-      # (first stable tag shipping the Custard extractor).
-      url = "github:dysinger/fstar/v2026.09.20+lsp";
+      # Fork of F* with the LSP server ported onto the v2026.10.25 base
+      # (stable tag shipping the Custard extractor and Z3 5.3.0).
+      url = "github:dysinger/fstar/v2026.10.25+lsp";
       flake = false;
     };
   };
@@ -53,7 +53,7 @@
               let
                 ocamlPackages = prev.ocaml-ng.ocamlPackages_5_3;
                 z3 = prev.callPackage (inputs.fstar + "/.nix/z3.nix") { };
-                version = "2026.09.20+lsp";
+                version = "2026.10.25+lsp";
 
                 fstar =
                   (ocamlPackages.callPackage (inputs.fstar + "/.nix/fstar.nix") {
