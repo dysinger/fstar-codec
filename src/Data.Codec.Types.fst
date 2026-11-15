@@ -234,14 +234,26 @@ let rec acc_digits (ds: list byte) (a: int) : Tot int (decreases ds) =
 let all_digits (ds: list byte) : bool = List.Tot.for_all is_digit ds
 
 
-(** digits_to_int_decode_go *)
+(**
+[digits_to_int_decode_go]: the numeral walk.
+
+A numeral has at least one digit, so a *success* SHALL have consumed at least
+one byte.  Both stops (budget exhausted at `k = 0`, and input exhausted at
+`i >= |s|`) therefore require `i > 0` as well as `f a`.  "Ran out of input" at
+`i = 0` is a rejection (`ExpectedPredicate`), not a value: without the `i > 0`
+conjunct the empty input decodes to `0` while `enc 0` is one byte, which makes
+`law_bwd` FALSE (`research.md` F61).
+
+The guard is rejection-only: every input the encoder can produce has at least
+one digit, so every in-domain decode is unchanged (`REQ-ISO-PRESERVE`).
+*)
 #push-options "--z3rlimit 40"
 let rec digits_to_int_decode_go (f: int -> bool) (s: byte_seq) (k: nat) (a: int) (i: nat)
   : Tot (decode_result int) (decreases k) =
   if k = 0 then
-    if f a then Inr (a, i) else Inl (mk_decode_error ExpectedPredicate i)
+    if f a && i > 0 then Inr (a, i) else Inl (mk_decode_error ExpectedPredicate i)
   else if i >= Seq.length s then
-    if f a then Inr (a, i) else Inl (mk_decode_error ExpectedPredicate i)
+    if f a && i > 0 then Inr (a, i) else Inl (mk_decode_error ExpectedPredicate i)
   else let b = U8.v (Seq.index s i) in
     if 0x30 <= b && b <= 0x39 then
       digits_to_int_decode_go f s (k-1) (a * 10 + (b - 0x30)) (i+1)

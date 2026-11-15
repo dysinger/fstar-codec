@@ -293,32 +293,55 @@ reject `" 1"`: the strict reader does not ignore ignorable characters.
 overlong LEB128 (`[0x80;0x00]` is not `0`; `enc 0 = [0x00]`) and leading zeros.
 Without this the backward direction is **false**, not merely unproved, and no
 amount of proof work fixes it. `[D12]` is the digit case; this is the general
-obligation. Planned/landing: decoder changes verified; **both** leaves' forward
-laws **proved** (`law_fwd` for `varint` and for `digits_to_int`), the backward
-laws (`law_bwd`/CANON) **not yet proved** (`[W8]`). The Pulse/C decoder
-must be changed in lockstep or the extracted C disagrees with the pure spec.
+obligation. **Shipped:** decoder changes are in `src/`; **both** leaves' forward
+laws **proved** (`law_fwd` for `varint` and for `digits_to_int`);
+`digits_to_int`'s backward law (`law_bwd`/CANON) **proved unconditionally**
+(`probe-f42/DIGITS_CANON.fst`, gated). `varint`'s backward law is still open
+(`[W8]`). The Pulse/C decoder must be changed in lockstep or the extracted C
+disagrees with the pure spec.
 
-⚠ **The word "exactly" is aspirational, not yet true — and one gap is now a
-_proved defect_.** `digits_to_int` accepts the **empty input** (`""` decodes to
-`0`, consuming 0 bytes) while `enc 0 = "0"` is one byte, so `law_bwd` is
-**false** there. This is a third instance of the same class, and a different
-shape from the other two: F39/F40 are permissiveness about a number's
-_representation_, this is permissiveness about its _presence_. The canonical
-decoder inherits it (it is one guard away). The defect is proved for **both**
-decoders in `codec-strict-isomorphism/probe-f42/DIGITS_EMPTY.fst` (in the spike
-runner); `research.md` F61 §3 and F62 record it. `varint` is **not** affected —
-it returns `None` on empty input (`varint_rejects_empty`, same module).
+**Which layer each rejection lives in — do not read one as the other.**
+With three rejections now shipped, each in a *different* place:
 
-**Decided: tighten the decoder** (change task T1.7f; `src/` still unchanged, the
-fix is gated inside the change). The criterion is the same one that separates
-the other two witnesses from this one: two spellings are equivalent iff the
-difference carries no information. `"01"` and `[0x80;0x00]` are redundant
-spellings of a **present** value — padding, which a normaliser could recover.
-`""` is the **absence** of a numeral, and no total idempotent `norm` maps it
-into `0`'s class without claiming "no digits" *is* "the digit `0`". **Absence is
-not a quotient case; it is not in the language.** Any leniency, ever, belongs in
-a normalising layer *outside* the codec (`[W9]`), never in a weakened law —
-which is also why it stays off the C hot path.
+| rejection | where it lives | witness |
+|---|---|---|
+| leading zero (`"01"` -> `None`) | the **leaf's canonical** reader (`[D12]`) | `probe-f41/B_Digits.fst` |
+| overlong LEB128 (`[0x80;0x00]` -> `None`) | the **leaf's canonical** `varint` reader | `probe-f41/A_Varint.fst` |
+| empty input (`""` -> `None`) | **`src/`'s** `digits_to_int_decode_go` (`i > 0`) | `probe-f42/DIGITS_EMPTY_FIXED.fst` |
+
+`src/`'s `digits_to_int_decode_go` keeps **no** leading-zero guard,
+deliberately (F63 §2): Route A's canonical reader is a *different object* that
+wraps or replaces it. So "the decoder rejects `\"01\"`" is **not** a statement
+about `src/`. Only the empty-input rejection is in `src/` itself, because it is
+the one that makes `law_bwd` false *for the strict codec the library ships*.
+
+✅ **The empty-input gap is CLOSED (T1.7f.1).** `digits_to_int` used to accept
+the **empty input** (`""` decoded to `0`, consuming 0 bytes) while `enc 0 = "0"`
+is one byte, so `law_bwd` was **false** there. That was a third instance of the
+same class and a different shape from the other two: F39/F40 are permissiveness
+about a number's _representation_, this was permissiveness about its _presence_.
+The pre-fix defect stays **proved** as history for both decoders in
+`probe-f42/DIGITS_EMPTY.fst`; the post-fix rejection is **proved** at every
+budget and for every predicate in `probe-f42/DIGITS_EMPTY_FIXED.fst`. Both are
+gated in the spike runner. `varint` was never affected — it returns `None` on
+empty input (`varint_rejects_empty`).
+
+The fix is one conjunct at **both** stops of `digits_to_int_decode_go`:
+
+```fstar
+if f a && i > 0 then Inr (a, i) else Inl (mk_decode_error ExpectedPredicate i)
+```
+
+It is **rejection-only** (`REQ-ISO-PRESERVE`): every input the encoder can
+produce has at least one digit, so no in-domain decode changed. The criterion is
+what separates this witness from the other two: two spellings are equivalent iff
+the difference carries no information. `"01"` and `[0x80;0x00]` are redundant
+spellings of a **present** value — padding. `""` is the **absence** of a
+numeral, and no total idempotent `norm` maps it into `0`'s class without
+claiming "no digits" *is* "the digit `0`". **Absence is not a quotient case; it
+is not in the language.** Any leniency, ever, belongs in a normalising layer
+*outside* the codec (`[W9]`), never in a weakened law — which is also why it
+stays off the C hot path.
 
 ### Strengthenings (we complete the paper, without changing its meaning)
 
@@ -498,9 +521,8 @@ coverage is now checked with `^(let|let rec|fn) lemma_` and confirmed by
 deletion, never by grep alone.
 
 **[W8] The `[D12]`/`[D13]` canonical readers are _verified_; both leaves' forward
-laws are now _proved_, the backward laws are open — and for `digits_to_int`
-provably _false_ on the empty input, whose decoder fix is decided (T1.7f) but
-not yet in `src/`.**
+laws are _proved_; `digits_to_int`'s backward law is now _proved
+unconditionally_; `varint`'s backward law is the one open item.**
 The two canonical decoders are written and _provably reject_ their witnesses
 (`varint` `[0x80;0x00]` -> `None`; `digits_to_int` `"01"` -> `None`), with
 canonical forms intact, at default rlimit and 0 admit.
@@ -518,11 +540,21 @@ the **consumer's** budget, split into two peels: at budget `= |enc n|` the
 decoder stops on the budget and no side condition applies at all; only the
 over-budget case consumes `rest_cond_v`.
 
+> ⚠ **SUPERSEDED (2026-11-15) by the status block at the end of this entry.**
+> The paragraph below records the state *before* the `src/` decoder fix. Both
+> claims it makes are now out of date: the empty-input fix **is** in `src/`, and
+> `|s| >= 1` has been **removed** rather than narrowed. Kept as history.
+
 Open: **both** leaves' `law_bwd`/CANON, and the Pulse/C decoder, which is **not
 yet** updated — so until those land the C path still accepts what the pure spec
 would reject. Stated here rather than buried: recording `[D12]`/`[D13]` as
 _done_ before the laws close would be exactly the "prose that outruns the
 checker" failure this document exists to avoid.
+
+> ⚠ **SUPERSEDED (2026-11-15).** Same banner: the `digits_to_int` bullet below
+> is resolved (`|s| >= 1` removed, `law_bwd` unconditional). Only the `varint`
+> bullet still describes open work.
+
 Partial progress since this entry was written, stated as _partial_ because
 `law_bwd` itself is still unproved or false on both leaves:
 
@@ -531,20 +563,25 @@ Partial progress since this entry was written, stated as _partial_ because
   (`lemma_digits_canon_len`) and the re-encoding bridge
   (`lemma_prefix_enc`). The bridge needed a **front peel in value space over a
   general accumulator**, not the end peel: the no-leading-zero fact is about
-  the *head* and does not survive peeling the tail. **But the assembly carries
-  `|s| >= 1`, and that is a real defect's boundary, not a proof convenience** —
-  the decoder accepts the empty input, where `law_bwd` is **false** (see
-  `[D13]`). So this leaf is proved *modulo one decoder branch*, not closed.
+  the *head* and does not survive peeling the tail. **(Resolved: the `|s| >=
+  1` hypothesis is GONE — see the status block at the end of this entry.**
+  **The text below describes the pre-fix state.**) **But the assembly carried
+  `|s| >= 1`, and that was a real defect's boundary, not a proof convenience** —
+  the decoder accepted the empty input, where `law_bwd` was **false** (see
+  `[D13]`). So this leaf was proved *modulo one decoder branch*, not closed.
 - `varint` — the consumed count, the terminating last byte, the upper bound
   `v < 2^(7q)`, and the two directions of the `nbytes` threshold table are
   proved (`probe-f42/VARINT_CANON.fst`). What remains is the value's lower
   bound, `q >= 2 ==> v >= 2^(7(q-1))`.
 
-Neither module is in the spike runner yet, deliberately: `DIGITS_CANON`'s
-`law_bwd` is conditional on the empty-input fix and `VARINT_CANON` is missing
-its lower bound, so adding either now would gate a file that does not yet prove
-CANON *unconditionally*. A lemma that is absent cannot be mistaken for a lemma
-that is proved.
+Neither module was in the spike runner at the time this paragraph was written;
+both are **now gated**, because the conditions it named have been discharged:
+`DIGITS_CANON` proves CANON **unconditionally** (the empty-input fix is in
+`src/` and `|s| >= 1` is derived), and `DIGITS_EMPTY_FIXED` proves the
+post-fix rejection. It is kept here because the reason for the original
+exclusion is the rule that matters: *a lemma that is absent cannot be mistaken
+for a lemma that is proved.* `VARINT_CANON` is still **not** gated, for the
+reason given: it is missing the value's lower bound.
 
 Two side conditions this work measured, both stricter than intuition:
 - the decoder stops cleanly only if the remainder is empty **or** at least one
@@ -554,6 +591,40 @@ Two side conditions this work measured, both stricter than intuition:
   the call, so such proofs are stated one step at a time — which is also why
   this file's own `lemma_varint_enc_dec_{1..5}byte` are five concrete lemmas
   rather than one induction.
+
+**Status 2026-11-15 (T1.7f.1–T1.7f.5, `digits_to_int` CLOSED).** The empty-input
+decoder fix is **in `src/`**: both stops of
+`digits_to_int_decode_go` now read `f a && i > 0` (`[D13]`). Measured, not
+carried:
+
+- `make check` **11 modules, 0 admits**, forced with `OUT=` so no stamp was
+  reused;
+- `probe-f42/DIGITS_CANON.fst` now proves CANON with the `|s| >= 1` hypothesis
+  **removed**, not narrowed: `lemma_dc_len_pos` derives `q >= 1` and `|s| >= 1`
+  from the decode itself, and `lemma_digits_law_bwd` is **unconditional on the
+  length**;
+- falsification test: reverting the decoder's two `i > 0` conjuncts (keeping
+  the hypothesis dropped) fails at `lemma_dc_len_pos` with
+  `Failed to prove: q >= 1` — so the derivation is load-bearing, and the two
+  changes are coupled by proof, not by comment;
+- `probe-f42/DIGITS_EMPTY_FIXED.fst` proves the post-fix rejection at every
+  budget and for every predicate, plus two preservation witnesses (`"0"` ->
+  `Some (0,1)`, `"111"` -> `Some (111,3)`); removing the guard breaks it.
+
+**A correction this session measured, worth stating because it is the opposite
+of the prediction:** the `i > 0` tightening did **NOT** force a restatement of
+`lemma_digits_walk` or `lemma_digits_process_list`. Both verified unchanged at
+rlimit 120. The reason is structural — the walk's base case returns the index
+`i + |ds|`, which is `>= 1` whenever `ds` is non-empty, and `process_list` calls
+at `i = 0` with `Cons? ds`, so at least one digit step always precedes any stop.
+The `i > 0` conjunct is therefore *satisfied at every reachable stop*, and F76's
+prediction that the base case would need to carry it was too cautious.
+
+What is genuinely still open in `[W8]`: **`varint`'s `law_bwd`** (the value's
+lower bound `q >= 2 ==> v >= 2^(7(q-1))`, `probe-f42/VARINT_CANON.fst`), and
+**the Pulse/C decoder**, which has not been changed in lockstep — so the
+pure-spec fix is not yet visible in the extracted C. That is `T1.7b-pulse`
+(lockstep, MANDATORY) followed by `T1.7b-c` (measure the C).
 
 **[W9] _(built — `Data.Codec.Normal`) A lenient layer now exists, as the paper's
 own reading of the law requires, and it is a type rather than a relaxed law.**
@@ -674,7 +745,7 @@ settled losses; the project's goal is that every one of them closes.
 | `[W5]` | a `map_` needing no retract obligation | `codec_v2` target |
 | `[W6]` | **a C path for every combinator**, not 8 leaves | scheduled — the C tier grows; this is a stated goal |
 | `[W7]` | complete anchor coverage | closed for the current lemma set; guarded by `[S6]` |
-| `[W8]` | the numeral readers' `law_bwd` | open — ledger item 4 |
+| `[W8]` | the numeral readers' `law_bwd` | **half closed** — `digits_to_int` proved **unconditionally** (T1.7f, 2026-11-15); `varint`'s lower bound still open |
 | `[W9]` | a lenient / noise-stripping layer | **built** — `Data.Codec.Normal` + `Normal.Bytes` (F72/F73); per-leaf obligation O still open |
 | `[W10]` | **a C domain as wide as the pure spec's** | scheduled — a design decision for `codec-strict-isomorphism` |
 
@@ -927,15 +998,16 @@ with 0 admits, plus 3 asserted refutations that must fail (measured
 | `map_` | ✅ w/ `map_law_bwd_on_image` (the `retract` hypothesis) | ✅ w/ the folded guard |
 | `text` | ✅ | ✅ |
 | `varint` | ⛔ **FALSE** over the library's decoder — overlong LEB128 (`[D13]`); over the **canonical** reader: open (the value's lower bound, F60) | ✅ over the canonical reader, at full `wfcv = [0, 2^35)` — but see `[W10]`: the C path only reaches 2^32 |
-| `digits_to_int` | ⛔ **FALSE** over the library's decoder — leading zero (`[D12]`) **and** the empty input (`[D13]`, F61); over the **canonical** reader: open (CANON is conditional on the empty-input fix, T1.7f) | ✅ over the canonical reader |
+| `digits_to_int` | ⛔ **FALSE** over the library's decoder — leading zero (`[D12]`); the empty input is now **rejected** (the `i > 0` fix, `[D13]`, T1.7f); over the **canonical** reader: ✅ **CANON proved UNCONDITIONALLY** (`probe-f42/DIGITS_CANON.fst`, gated) | ✅ over the canonical reader |
 
 **Nothing is migrated into `src/` yet** — `codec_v2` is declared there and proved
 in the spike suite, but no combinator in `src/` uses it. `[W8]` is therefore open,
 and it stays open until all of the following land:
 
-1. `law_bwd` (CANON) over the two canonical numeral readers — **this is what is
-   still open**; both leaves' `law_fwd` are **proved** (items 3 of the change's
-   obligation ledger is done, item 4 is not);
+1. `law_bwd` (CANON) over the two canonical numeral readers — **`digits_to_int`
+   is DONE** (T1.7f: CANON proved unconditionally, `|s| >= 1` removed);
+   **`varint` is what remains** (the value's lower bound, F60). Both leaves'
+   `law_fwd` are **proved** (ledger item 3 is done; item 4 is half done);
 2. `Data.Codec.Pulse`'s `varint_decode_expected` canonicalised in lockstep;
 3. the extracted C measured rather than estimated.
 
