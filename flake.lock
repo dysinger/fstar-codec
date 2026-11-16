@@ -21,17 +21,34 @@
     "fstar": {
       "flake": false,
       "locked": {
-        "lastModified": 1794747531,
-        "narHash": "sha256-wjoTPZp+vYrefvT/o1jcjoyPeVsvS5KB1SwBnaoJf6U=",
+        "lastModified": 1794798045,
+        "narHash": "sha256-3OX92WNu8CI6Uj5FCavpIw9MBL9LK8nSQov47uRleD0=",
         "owner": "dysinger",
         "repo": "fstar",
-        "rev": "f93999c4a88b30f0b7eb4ad8b60207d1289c0936",
+        "rev": "e9866b9f10780a600b18ad415d64fb61d4d3bd9a",
         "type": "github"
       },
       "original": {
         "owner": "dysinger",
-        "ref": "v2026.10.25+lsp",
+        "ref": "v2026.11.15+lsp",
         "repo": "fstar",
+        "type": "github"
+      }
+    },
+    "mimalloc-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1793385165,
+        "narHash": "sha256-9ojjdV48VSWQ6Wiycmr7Dw44cNAV5doie6oWlMe7i00=",
+        "owner": "microsoft",
+        "repo": "mimalloc",
+        "rev": "56dc5eb80145f9a3ba7ca23d47c6a248b9d8586c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "microsoft",
+        "ref": "v3.6.1",
+        "repo": "mimalloc",
         "type": "github"
       }
     },
@@ -71,6 +88,7 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "fstar": "fstar",
+        "mimalloc-src": "mimalloc-src",
         "nixpkgs": "nixpkgs",
         "treefmt-nix": "treefmt-nix"
       }
