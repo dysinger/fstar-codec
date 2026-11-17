@@ -302,8 +302,10 @@ laws **proved** (`law_fwd` for `varint` and for `digits_to_int`);
 stops 2–5, so the extracted C **rejects** `[0x80;0x00]` and `[0x80;0x80;0x00]`
 and accepts `[0x00]`, `[0x82;0x01]` exactly as the strict reader does
 (`fstar-codec` `32aa8e8`; evidence `codec-strict-isomorphism` `research.md`
-F80).  The **pure** law's proof is what remains open, not the artifact's
-behaviour.
+F80).  **The law's proof is now CLOSED too** — and it is closed *on that same
+object*: `research.md` F83/F84/F85 restate `law_bwd` and `law_fwd` on the flat
+reader `varint_decode_expected`, so the proved spec and the shipped artifact are
+one function rather than two that were believed to agree (`[W8]`).
 
 **Which layer each rejection lives in — do not read one as the other.**
 With three rejections now shipped, each in a *different* place:
@@ -430,7 +432,8 @@ _true_ rather than _conditional on the input_. Weakens nothing: it removes
 accepted inputs, adds no hypothesis, and shrinks no domain. It is the answer to
 the paper's own §6.4 `integer` defect (`[D12]`), which the paper leaves unstated.
 Status: decoders verified; `digits_to_int`'s forward law **proved** on the
-canonical decoder, the remaining laws open (`[W8]`).
+canonical decoder; **both laws are now proved on the flat C-shaped reader**
+(`[W8]`, `research.md` F85).
 
 **[S9] _(shipped)_ The paper's `integer` law _failure is named and fixed_.**
 §6.4's `integer` accepts `"01"` while `show′ 1 = "1"`, so its `Iso` field is a
@@ -525,9 +528,9 @@ F\* has three lemma-declaration forms (`let`, `let rec`, and Pulse's `fn`), so
 coverage is now checked with `^(let|let rec|fn) lemma_` and confirmed by
 deletion, never by grep alone.
 
-**[W8] The `[D12]`/`[D13]` canonical readers are _verified_; both leaves' forward
-laws are _proved_; `digits_to_int`'s backward law is now _proved
-unconditionally_; `varint`'s backward law is the one open item.**
+**[W8] _(CLOSED 2026-11-17 — both laws now proved on the shipped reader)_ The
+`[D12]`/`[D13]` canonical readers are _verified_; both leaves' forward laws are
+_proved_; both backward laws are now _proved_.**
 The two canonical decoders are written and _provably reject_ their witnesses
 (`varint` `[0x80;0x00]` -> `None`; `digits_to_int` `"01"` -> `None`), with
 canonical forms intact, at default rlimit and 0 admit.
@@ -625,11 +628,36 @@ at `i = 0` with `Cons? ds`, so at least one digit step always precedes any stop.
 The `i > 0` conjunct is therefore *satisfied at every reachable stop*, and F76's
 prediction that the base case would need to carry it was too cautious.
 
-What is genuinely still open in `[W8]`: **`varint`'s `law_bwd`** (the value's
-lower bound `q >= 2 ==> v >= 2^(7(q-1))`, `probe-f42/VARINT_CANON.fst`), and
-**the Pulse/C decoder**, which has not been changed in lockstep — so the
-pure-spec fix is not yet visible in the extracted C. That is `T1.7b-pulse`
-(lockstep, MANDATORY) followed by `T1.7b-c` (measure the C).
+**`varint`'s backward law was the last open item, and it is now CLOSED**
+(2026-11-17, `codec-strict-isomorphism` `research.md` **F83/F84/F85**).  The
+five earlier sessions framed it as a lower-bound proof on the recursive
+`varint_dec_c`, and the blocker moved three times (F60 -> F81 -> F82).  The
+resolution was a **statement decision, not a proof**: state the law on the
+**flat, C-shaped reader** the library actually ships
+(`Data.Codec.Pulse.varint_decode_expected`), where each byte's weight is a
+**literal** instead of `pow2 (7*k)`.  Then:
+
+| lemma | what it settles |
+|---|---|
+| `lemma_flat_canon` | `nbytes_of_varint v = q` from literal thresholds — no `pow2`, no accumulator |
+| `lemma_agrees` (`agree_1..5`) | the recursive decoder and the flat reader return the same answer |
+| `lemma_prefix_is_enc` | **the consumed prefix IS `enc v`** |
+| `lemma_fwd_1..5` | `law_fwd` on the flat reader |
+
+Why the recursive shapes were stuck, measured: the recursion and the flat
+reader differ **only** at budget 10 on inputs where the recursion reads a 6th
+byte — and there the value is `>= 2^35`, **outside `wfcv`**, so the law never
+quantifies over it.  The agreement is stated at budget = the flat count.  The
+earlier attempts were proving a fact the law never needs.
+
+One module, `probe-f42/VARINT_FLAT_CANON.fst` and
+`probe-f42/VARINT_FLAT_BRIDGE.fst`, both gated, both 0 admit at default rlimit.
+
+**`[W10]` is now measured rather than described.**  `law_fwd` on the flat reader
+**cannot** be stated at `[0, 2^35)`: the reader rejects a 5th group `> 15`, so
+it reads only `< 2^32`.  The lemma is therefore stated on the reader's own
+domain, and the `[0, 2^35)` statement stays with the recursive decoder.  The
+entry below stands, now with a proof showing the same edge from the reader side.
 
 **[W9] _(built — `Data.Codec.Normal`) A lenient layer now exists, as the paper's
 own reading of the law requires, and it is a type rather than a relaxed law.**
@@ -676,9 +704,18 @@ Two bounds on that layer, both established by this library's own findings:
 
 This is **scheduled work, not a caveat**: it is the paper-faithfulness half of the
 project's goal, and it is blocked only by ordering — the lenient layer's proof
-consumes the strict codec's law, so it lands after `[W8]` closes.
+consumes the strict codec's law, so it landed after `[W8]` began closing.  **`[W8]`
+is now closed** (`research.md` F85).
 
 **[W10] _The C tier's domain is narrower than the pure spec's_.**
+> **MEASURED 2026-11-17** (`research.md` F85).  This entry was a *description*
+> when written; it is now a *proof*.  `law_fwd` on the flat reader **cannot**
+> be stated at `[0, 2^35)`: the 5th byte's group is tested against `> 15`, so
+> the reader accepts only `< 2^32`, and `lemma_fwd_5` is therefore stated at
+> `[268435456, 2^32)`.  The `[0, 2^35)` statement lives with the recursive
+> decoder instead.  Narrowing `varint.wfcv` to `[0, 2^32)` remains a design
+> decision for `codec-strict-isomorphism`, not a documentation repair — and it
+> is now the only thing standing between the spec and the artifact's domain.
 `varint.wfcv` admits `[0, 2^35)` (`Data.Codec.Types.fst`, in the `varint`
 literal, which says so explicitly), but the Pulse path is `U32.t`-valued, i.e.
 `[0, 2^32)`. Values in `[2^32, 2^35)` therefore have a pure specification, a
