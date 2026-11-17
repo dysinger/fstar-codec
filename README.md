@@ -297,8 +297,13 @@ obligation. **Shipped:** decoder changes are in `src/`; **both** leaves' forward
 laws **proved** (`law_fwd` for `varint` and for `digits_to_int`);
 `digits_to_int`'s backward law (`law_bwd`/CANON) **proved unconditionally**
 (`probe-f42/DIGITS_CANON.fst`, gated). `varint`'s backward law is still open
-(`[W8]`). The Pulse/C decoder must be changed in lockstep or the extracted C
-disagrees with the pure spec.
+(`[W8]`). **The Pulse/C decoder is in lockstep (_shipped_):** its
+`varint_decode_expected` and `decode_varint` carry the same group-zero test at
+stops 2–5, so the extracted C **rejects** `[0x80;0x00]` and `[0x80;0x80;0x00]`
+and accepts `[0x00]`, `[0x82;0x01]` exactly as the strict reader does
+(`fstar-codec` `32aa8e8`; evidence `codec-strict-isomorphism` `research.md`
+F80).  The **pure** law's proof is what remains open, not the artifact's
+behaviour.
 
 **Which layer each rejection lives in — do not read one as the other.**
 With three rejections now shipped, each in a *different* place:
