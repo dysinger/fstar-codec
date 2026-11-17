@@ -776,21 +776,30 @@ let varint_decode_expected (i: U32.t) (n: U32.t) (s: Seq.seq U8.t { U32.v i + U3
       let b1 = Seq.index s (U32.v i + 1) in
       let v1 = U32.add v0 (U32.mul (U32.uint_to_t (U8.v b1 % 128)) 128ul) in
       if U8.v b1 < 128 then
-        DR_Inr ({ n = 2ul; value = v1 })
+        if U8.v b1 % 128 = 0 then
+          DR_Inl ({ code = EC_ExpectedByte 0uy; pos = i })
+        else
+          DR_Inr ({ n = 2ul; value = v1 })
       else if U32.lt n 3ul then
         DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
       else
         let b2 = Seq.index s (U32.v i + 2) in
         let v2 = U32.add v1 (U32.mul (U32.uint_to_t (U8.v b2 % 128)) 16384ul) in
         if U8.v b2 < 128 then
-          DR_Inr ({ n = 3ul; value = v2 })
+          if U8.v b2 % 128 = 0 then
+            DR_Inl ({ code = EC_ExpectedByte 0uy; pos = i })
+          else
+            DR_Inr ({ n = 3ul; value = v2 })
         else if U32.lt n 4ul then
           DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
         else
           let b3 = Seq.index s (U32.v i + 3) in
           let v3 = U32.add v2 (U32.mul (U32.uint_to_t (U8.v b3 % 128)) 2097152ul) in
           if U8.v b3 < 128 then
-            DR_Inr ({ n = 4ul; value = v3 })
+            if U8.v b3 % 128 = 0 then
+              DR_Inl ({ code = EC_ExpectedByte 0uy; pos = i })
+            else
+              DR_Inr ({ n = 4ul; value = v3 })
           else if U32.lt n 5ul then
             DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
           else
@@ -798,6 +807,8 @@ let varint_decode_expected (i: U32.t) (n: U32.t) (s: Seq.seq U8.t { U32.v i + U3
             let b4_val = U8.v b4 % 128 in
             if b4_val > 15 then
               DR_Inl ({ code = EC_Overflow; pos = i })
+            else if b4_val = 0 then
+              DR_Inl ({ code = EC_ExpectedByte 0uy; pos = i })
             else
               let v4 = U32.add v3 (U32.mul (U32.uint_to_t b4_val) 268435456ul) in
               DR_Inr ({ n = 5ul; value = v4 })
@@ -839,7 +850,11 @@ fn decode_varint (b: A.array U8.t) (i: U32.t) (n: U32.t)
       let b1 = b.(j1);
       let v1 = U32.add v0 (U32.mul (U32.rem (uint8_to_uint32 b1) 128ul) 128ul);
       if U8.lt b1 128uy {
-        DR_Inr ({ n = 2ul; value = v1 })
+        if U8.eq (U8.rem b1 128uy) 0uy {
+          DR_Inl ({ code = EC_ExpectedByte 0uy; pos = i })
+        } else {
+          DR_Inr ({ n = 2ul; value = v1 })
+        }
       } else if U32.lt n 3ul {
         DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
       } else {
@@ -847,7 +862,11 @@ fn decode_varint (b: A.array U8.t) (i: U32.t) (n: U32.t)
         let b2 = b.(j2);
         let v2 = U32.add v1 (U32.mul (U32.rem (uint8_to_uint32 b2) 128ul) 16384ul);
         if U8.lt b2 128uy {
-          DR_Inr ({ n = 3ul; value = v2 })
+          if U8.eq (U8.rem b2 128uy) 0uy {
+            DR_Inl ({ code = EC_ExpectedByte 0uy; pos = i })
+          } else {
+            DR_Inr ({ n = 3ul; value = v2 })
+          }
         } else if U32.lt n 4ul {
           DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
         } else {
@@ -855,7 +874,11 @@ fn decode_varint (b: A.array U8.t) (i: U32.t) (n: U32.t)
           let b3 = b.(j3);
           let v3 = U32.add v2 (U32.mul (U32.rem (uint8_to_uint32 b3) 128ul) 2097152ul);
           if U8.lt b3 128uy {
-            DR_Inr ({ n = 4ul; value = v3 })
+            if U8.eq (U8.rem b3 128uy) 0uy {
+              DR_Inl ({ code = EC_ExpectedByte 0uy; pos = i })
+            } else {
+              DR_Inr ({ n = 4ul; value = v3 })
+            }
           } else if U32.lt n 5ul {
             DR_Inl ({ code = EC_UnexpectedEndOfInput; pos = i })
           } else {
@@ -864,6 +887,8 @@ fn decode_varint (b: A.array U8.t) (i: U32.t) (n: U32.t)
             let b4_val = U32.rem (uint8_to_uint32 b4) 128ul;
             if U32.gt b4_val 15ul {
               DR_Inl ({ code = EC_Overflow; pos = i })
+            } else if U32.eq b4_val 0ul {
+              DR_Inl ({ code = EC_ExpectedByte 0uy; pos = i })
             } else {
               let v4 = U32.add v3 (U32.mul b4_val 268435456ul);
               DR_Inr ({ n = 5ul; value = v4 })
