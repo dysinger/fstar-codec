@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`bench/` — the C benchmark harness (`REQ-ISO-C-PERF`, T9.1/T9.2).**  There
+  was no benchmark in this repository, so the "fast in C" conjunct of the
+  delivery criterion was unmeasured.  `bench/bench-pulse.c` drives the extracted
+  C through `codec.h`; `bench/bench-ref.c` is a hand-written C baseline for the
+  same 8 wire formats on the same fixed 16-byte, 7-field message;
+  `bench/run.sh` extracts the C **before** and **after** the canonicalisation
+  guard and reports both.  New nix target `.#bench` builds and runs it, so the
+  recorded figures are a build artifact.  Measured (aarch64-darwin, `cc -O2`):
+  decode at parity with hand-written C (`decode/message` 1.00x,
+  `decode/leaves` 0.99x), encode 1.49x–1.63x, `roundtrip/message` 1.22x; the
+  group-zero guard costs **+12%** on a 2-byte varint decode (~0.25 ns).
+
+### Fixed
+
+- **The `native`, `ocaml`, and `fsharp` derivations used a flag this toolchain
+  rejects.**  All three passed `--codegen Custard` (and `--custard_backend`),
+  while the accepted enum is `OCaml|FSharp|KrmlC|KrmlRust|C|Cherry|Plugin` and
+  `--custard_backend` does not exist — so `nix build .#native` could never have
+  produced the C.  The flag is now `--codegen C`, rooted with
+  `--custard_entry_module Data.Codec.Pulse --custard_c_no_prefix
+  Data.Codec.Pulse`.  Measured end to end: verify 4 modules from cold + extract +
+  compile `-Werror` = 63 s.  The "`.#native` hangs at 0% CPU" note was the
+  rejected flag, and a cold `Types` verify is 24 s and green — not a hang.
+- **`.#ocaml` needs `-o` to name each `.ml`.**  Custard's OCaml backend writes
+  `Custard.ml` regardless of module, so three invocations overwrote one another
+  and `dune`'s `modules` list could not be satisfied.  Each pure module now
+  emits `$(module with dots → underscores).ml`; `--codegen OCaml` also needs an
+  entry point on this toolchain (`--custard_entry_module`).
+- **`README.md` states the measurement instead of calling it unmeasured.**  The
+  Performance section's "no benchmark exists / no throughput claim" table is
+  replaced by the measured figures and the two gaps that genuinely remain
+  (`[W6]` C reach, `[W10]` C domain).  `[W8]` is marked closed (F84/F85 + the
+  benchmark), and the `varint` row of the law table is updated.
+
 ### Removed
 
 - **Deleted five dead `opt_prefixed_*_eq` accessor lemmas** from

@@ -787,7 +787,7 @@ settled losses; the project's goal is that every one of them closes.
 | `[W5]` | a `map_` needing no retract obligation | `codec_v2` target |
 | `[W6]` | **a C path for every combinator**, not 8 leaves | scheduled — the C tier grows; this is a stated goal |
 | `[W7]` | complete anchor coverage | closed for the current lemma set; guarded by `[S6]` |
-| `[W8]` | the numeral readers' `law_bwd` | **half closed** — `digits_to_int` proved **unconditionally** (T1.7f, 2026-11-15); `varint`'s lower bound still open |
+| `[W8]` | the numeral readers' `law_bwd` | **closed for both leaves** — `digits_to_int` proved unconditionally (T1.7f); `varint`'s both laws proved on the shipped flat reader plus the encoder bridge (F84/F85) |
 | `[W9]` | a lenient / noise-stripping layer | **built** — `Data.Codec.Normal` + `Normal.Bytes` (F72/F73); per-leaf obligation O still open |
 | `[W10]` | **a C domain as wide as the pure spec's** | scheduled — a design decision for `codec-strict-isomorphism` |
 
@@ -1039,19 +1039,24 @@ with 0 admits, plus 3 asserted refutations that must fail (measured
 | `count` (positional) | ✅ | ✅ |
 | `map_` | ✅ w/ `map_law_bwd_on_image` (the `retract` hypothesis) | ✅ w/ the folded guard |
 | `text` | ✅ | ✅ |
-| `varint` | ⛔ **FALSE** over the library's decoder — overlong LEB128 (`[D13]`); over the **canonical** reader: open (the value's lower bound, F60) | ✅ over the canonical reader, at full `wfcv = [0, 2^35)` — but see `[W10]`: the C path only reaches 2^32 |
+| `varint` | ⛔ **FALSE** over the library's legacy decoder — overlong LEB128 (`[D13]`); over the **canonical flat reader**: ✅ **both laws proved** plus the encoder bridge (`probe-f42/VARINT_FLAT_CANON.fst` + `VARINT_FLAT_BRIDGE.fst`, gated, F84/F85) | ✅ over the canonical reader, at full `wfcv = [0, 2^35)` — but see `[W10]`: the C path only reaches 2^32 |
 | `digits_to_int` | ⛔ **FALSE** over the library's decoder — leading zero (`[D12]`); the empty input is now **rejected** (the `i > 0` fix, `[D13]`, T1.7f); over the **canonical** reader: ✅ **CANON proved UNCONDITIONALLY** (`probe-f42/DIGITS_CANON.fst`, gated) | ✅ over the canonical reader |
 
 **Nothing is migrated into `src/` yet** — `codec_v2` is declared there and proved
-in the spike suite, but no combinator in `src/` uses it. `[W8]` is therefore open,
-and it stays open until all of the following land:
+in the spike suite, but no combinator in `src/` uses it. `[W8]` was opened by the
+strict-law migration and is closed by all three of the following, the last of
+which was the open one:
 
-1. `law_bwd` (CANON) over the two canonical numeral readers — **`digits_to_int`
-   is DONE** (T1.7f: CANON proved unconditionally, `|s| >= 1` removed);
-   **`varint` is what remains** (the value's lower bound, F60). Both leaves'
-   `law_fwd` are **proved** (ledger item 3 is done; item 4 is half done);
-2. `Data.Codec.Pulse`'s `varint_decode_expected` canonicalised in lockstep;
-3. the extracted C measured rather than estimated.
+1. `law_bwd` (CANON) over the two canonical numeral readers — ✅ **both done**:
+   `digits_to_int` (T1.7f, unconditional) and `varint` (F84 count half +
+   F85 `law_fwd` and the encoder bridge, on the shipped flat reader).  Both
+   leaves' `law_fwd` are proved;
+2. `Data.Codec.Pulse`'s `varint_decode_expected` canonicalised in lockstep —
+   ✅ **done** (`32aa8e8`, F80); the extracted C rejects `[0x80;0x00]`;
+3. the extracted C **measured rather than estimated** — ✅ **done** (`bench/`,
+   `nix build .#bench`, T9.1/T9.2): decode at parity with hand-written C, encode
+   ~1.5x, and the canonicalisation's guard costs **+12%** on a 2-byte varint
+   decode.  See *Performance* above for the table.
 
 ---
 
@@ -1161,28 +1166,74 @@ a server's hot path instead of allocating a value per message.
 
 The criterion is **"correct in code and fast in C — close to hand-written C"**.
 This is a **requirement of the work, not an aspiration**: it is the premise that
-eliminated two of the three candidate routes to the strict law. It is also
-**currently unmet in two measurable ways**, both open in the change's obligation
-ledger:
+eliminated two of the three candidate routes to the strict law.
+
+**It is now measured.**  `bench/` holds a benchmark harness and `nix build
+.#bench` builds and runs it; its output is a build artifact, so the figures
+travel with the build.  The harness compares the extracted C against a
+hand-written C baseline for the same 8 wire formats, on the same 16-byte,
+7-field message, with the same iteration count and clock.  It refuses to report
+if either side fails its own roundtrip check, if the two sides disagree on the
+result, or if a round is too short to resolve.
+
+| measurement | value |
+|---|---|
+| harness floor (empty indirect call + argument store) | ~1.2 ns/op |
+| `decode/message` (7 fields), extracted vs baseline | **1.00x** |
+| `decode/leaves` (6 fields), extracted vs baseline | **0.99x** |
+| `encode/*` (all three rows), extracted vs baseline | **1.49x – 1.63x** |
+| `roundtrip/message`, extracted vs baseline | **1.22x** |
+| varint `decode` (2-byte value), extracted vs baseline | **1.93x** |
+
+So the **decode path is at parity** with hand-written C, and the **encode path
+is ~1.5x** the baseline — which is the honest number, not the desired one.  The
+asymmetry has a visible cause in the emitted code: the encoders recompute the
+byte split arithmetically from the value on every call (`v / 128`,
+`(v / 65536) % 256`, …) even though each leaf's width is known from its own
+tag, while the hand-written baseline shifts.  Closing that gap is code
+emitted from verified F*; it is not a proof change and it is not done here.
+
+> **Read the figures from `bench/run.sh`, not from `pulse.tsv` in the nix
+> sandbox.**  `nix build .#bench` proves the harness builds, runs, and passes
+> its gates; its sandbox numbers are contaminated by other builds (the floor
+> row rises 5–10x).  The figures above are from a quiet host,
+> `nix develop -c ./bench/run.sh`, which alternates the runs and keeps the
+> minimum over 5 runs × 41 rounds.
+
+**Two gaps remain, both recorded below as limits, not as estimates.**
 
 | gap | state |
 |---|---|
 | **the C path covers 8 leaves, not the library** (`[W6]`) | `product`, `alt`, `sep_by1*`, `take_until`, `opt_prefixed`, `satisfy_many*` have a pure spec and **no C path** |
-| **the C tier's domain is narrower than the spec's** (`[W10]`) | pure `varint.wfcv` is `[0, 2^35)`; the C path is `U32.t`-valued, i.e. `[0, 2^32)` |
-| **the cost of the strict-law migration is unmeasured** (ledger item 6) | no benchmark harness exists in this repository; the added work is one comparison on an already-loaded register (an *estimate*, not a result) |
+| **the C tier's domain is narrower than the spec's** (`[W10]`) | pure `varint.wfcv` is `[0, 2^35)`; the C path is `U32.t`-valued, i.e. `[0, 2^32)` — measured from the reader's side by F85 |
 
-Until a measurement exists, this document makes **no throughput claim**. A
-number invented here would be precisely the defect the migration exists to
-remove. The honest reading is: the artifact is built, linked and callable today;
-its *speed relative to hand-written C* has not been established by this
-repository, and closing that gap is scheduled work, not a caveat.
+### The cost of correctness — measured, not guessed
+
+`REQ-ISO-CANONICAL`'s tightening added one comparison at each of the varint
+decoder's terminating stops (the group-zero test that rejects overlong
+encodings).  `bench/run.sh` extracts the C **before** that commit
+(`32aa8e8^`) and **after** (`HEAD`), builds both, and reports them side by side.
+The two extractions differ by 30 lines, all of them the guard.
+
+| varint decode (2-byte value) | ps/op | vs pre |
+|---|---|---|
+| pre-tightening (`32aa8e8^`) | ~2050 | — |
+| post-tightening (`HEAD`) | ~2300 | **+12%** |
+
+The guard costs about **0.25 ns per varint decode**, or about 12% of a 2 ns
+decode.  That is the price of canonicality, and it is a number read from the
+emitted code rather than inferred from the source.  Reproduce with
+`nix develop -c ./bench/run.sh`.
 
 ### What is _not_ yet measured
 
-The pure-spec side is measured by verification (SMT discharge); the C side is
-not measured at all. A claim about emitted code cannot be _derived_ here — no
-law in this repository states anything about it — so it can only be measured or
-labelled unmeasured. It is labelled unmeasured.
+The **pure-spec** side is measured by verification (SMT discharge), not by time.
+A claim about emitted code cannot be _derived_ here — no law in this repository
+states anything about it — so it is measured (`bench/`) or labelled unmeasured.
+What is still unmeasured: any **composite** codec's C cost (there is no C path
+for them — `[W6]`), other machines' figures (all numbers above are from one
+host, aarch64-darwin, one compiler, `cc -O2`), and the **cost of the strict
+migration on a full consumer** (only the leaf and a 7-field message are timed).
 
 ## Getting started
 
@@ -1199,6 +1250,12 @@ nix build .#checked    # F* verification gate (0-admit: spec + leaf + tests)
 nix build .#ocaml      # OCaml findlib package of the pure spec + Pulse leaf
 nix build .#native     # C11 shared/static lib (default)
 nix build .#fsharp     # .NET library
+
+# The measurement (REQ-ISO-C-PERF): runs bench/, ships ref.tsv + pulse.tsv
+nix build .#bench
+
+# Pre/post-tightening comparison, both extractions, from a checkout
+nix develop -c ./bench/run.sh
 
 # Dev loop (no nix): verify via the Makefile
 nix develop && make check

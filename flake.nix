@@ -158,6 +158,7 @@
         packages.ocaml = _pkg.ocaml;
         packages.native = _pkg.native;
         packages.fsharp = _pkg.fsharp;
+        packages.bench = _pkg.bench;
 
         devShells.default = pkgs.mkShell {
           dontDetectOcamlConflicts = true;

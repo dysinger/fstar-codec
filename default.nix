@@ -10,6 +10,8 @@
 #
 # Artifacts (named by deliverable, not by backend):
 #   - `checked` — F* verification of src/ + test/ (the 0-admit gate).
+#   - `bench`   — runs the C benchmark (extracted C vs hand-written baseline)
+#                 and ships its output (REQ-ISO-C-PERF).
 #   - `ocaml`   — findlib package shipping ALL OCaml-extractable modules:
 #                 the pure spec (`Data.Codec.Types` + `Data.Codec` via
 #                 `--codegen OCaml`) AND the Pulse leaf (`Data.Codec.Pulse`,
@@ -17,7 +19,7 @@
 #   - `native`  — C11 shared/static lib of the Pulse leaf (`Data.Codec.Pulse`,
 #                 `--custard_backend C`).
 #
-# Returns { checked; ocaml; native; fsharp; }.
+# Returns { checked; ocaml; native; fsharp; bench; }.
 
 {
   fstar,
@@ -105,8 +107,16 @@ let
             # our own modules' `.checked` files (Error 317 otherwise).
             mkdir -p cache
             cp ${fstar-checked}/*.checked cache/ 2>/dev/null || true
-            # 1) Extract the pure spec (Data.Codec.Types + Data.Codec) via legacy
+            # 1) Extract the pure spec (Data.Codec.Types + Data.Codec) via
             #    `--codegen OCaml` (one file per invocation, in dependency order).
+            #    On this toolchain every `--codegen` goes through Custard, so an
+            #    entry point is REQUIRED (Error 155 otherwise) — the whole module
+            #    is the natural root for a pure-spec module.
+            #    The OCaml backend names its output `Custard.ml` whatever the
+            #    module, so `-o` gives each module its own file (otherwise each
+            #    invocation overwrites the last and only one `.ml` survives).
+            #    The last invocation also emits `Custard.ml` (the module-to-
+            #    filename map is what `dune` lists); it is `-o Custard.ml` too.
             for m in ${builtins.concatStringsSep " " pure-modules}; do
               ${fstar-exe} \
                 --no_default_includes --include $ULIB --include ./src \
@@ -115,7 +125,8 @@ let
               ${fstar-exe} \
                 --no_default_includes --include $ULIB --include ./src --include cache \
                 --cache_checked_modules --cache_dir cache \
-                --codegen OCaml --odir $out \
+                --codegen OCaml --custard_entry_module $m \
+                -o $out/$(echo $m | tr . _).ml \
                 src/$m.fst || exit 1
             done
             # 2) Extract the Pulse leaf (Data.Codec.Pulse), OCaml backend.
@@ -135,7 +146,7 @@ let
               --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src --include cache \
               --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
               --cache_checked_modules --cache_dir cache \
-              --codegen Custard --custard_backend OCaml --custard_monomorphize_types true \
+              --codegen OCaml --custard_monomorphize_types true \
               --custard_entry Data.Codec.Pulse.encode_bytes \
               --custard_entry Data.Codec.Pulse.decode_bytes \
               --odir $out \
@@ -177,10 +188,18 @@ let
 
   # ── native (C) backend ─────────────────────────────────────────────
   #
-  # `--codegen Custard --custard_backend C` extracts the Pulse leaf
-  # (`Data.Codec.Pulse`) to C11.  The whole module is a
-  # library (no `main`), rooted with `--custard_entry_module`.  The C backend
-  # requires `--custard_monomorphize_types true`.
+  # `--codegen C` (Custard's C backend) extracts the Pulse leaf
+  # (`Data.Codec.Pulse`) to C11.  The flag is `--codegen C`, NOT
+  # `--codegen Custard`: the enum is OCaml|FSharp|KrmlC|KrmlRust|C|Cherry|Plugin
+  # and `--codegen Custard` is rejected outright.  `--custard_backend` is not
+  # an option at all on this toolchain.  The whole module is a library (no
+  # `main`), so it is rooted with `--custard_entry_module`, which also emits
+  # the public definitions under their bare names (as krml's `-no-prefix`).
+  #
+  # Measured on this host (2026-11-18): verify 4 modules from cold + extract +
+  # compile `-Werror` = 63 s total.  The "#native hangs at 0% CPU" note was
+  # the rejected flag plus, in a different attempt, a cold Types verify; the
+  # cold Types verify alone is 24 s and green.
 
   flib = "${fstar}/lib/fstar";
   pulse-incs = [
@@ -189,6 +208,40 @@ let
     "${flib}/pulse/pulse/lib"
     "${flib}/pulse/pulse.checked"
   ];
+
+  # The verify-then-extract recipe shared by `native` and `bench`.  Verifying
+  # into a shared cache in dependency order is what lets the extract step read
+  # the dependencies' `.checked` files; one invocation cannot do both (Error
+  # 317, "Cross-module inlining expects all modules to be checked first").
+  # Each step is bounded by `timeout` so a stuck query dies instead of hanging
+  # the build (fstar-codec MANDATES 1-2).
+  verify-then-extract = ''
+    mkdir -p "$out" cache
+    ULIB="${flib}/ulib"
+    PULSE_INCS=""
+    for d in ${lib.concatStringsSep " " pulse-incs}; do
+      PULSE_INCS="$PULSE_INCS --include $d"
+    done
+    cp ${fstar-checked}/*.checked cache/ 2>/dev/null || true
+    for m in Data.Codec.Types Data.Codec.Text Data.Codec Data.Codec.Pulse; do
+      timeout 600 ${fstar-exe} \
+        --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src \
+        --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
+        --z3rlimit 120 \
+        --cache_checked_modules --cache_dir cache --odir cache \
+        src/$m.fst || exit 1
+    done
+    timeout 600 ${fstar-exe} \
+      --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src --include cache \
+      --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
+      --cache_checked_modules --cache_dir cache \
+      --codegen C --custard_monomorphize_types true \
+      --custard_entry_module Data.Codec.Pulse \
+      --custard_c_no_prefix Data.Codec.Pulse \
+      --odir "$out" \
+      src/Data.Codec.Pulse.fst || exit 1
+    cp "$out/Custard.h" "$out/codec.h"
+  '';
 
   native = mkDerivation {
     pname = "${pname}-native";
@@ -200,35 +253,7 @@ let
     ];
     inherit meta;
     buildPhase = ''
-      mkdir -p $out cache
-      ULIB="${flib}/ulib"
-      PULSE_INCS=""
-      for d in ${lib.concatStringsSep " " pulse-incs}; do
-        PULSE_INCS="$PULSE_INCS --include $d"
-      done
-      # Seed the cache with pre-verified stdlib `.checked` files so
-      # `--already_cached Prims,FStar,...` can resolve (Error 317 otherwise).
-      cp ${fstar-checked}/*.checked cache/ 2>/dev/null || true
-      # Verify in dependency order into a cache so cross-module inlining
-      # (Error 317) can find our own modules' `.checked` files.
-      for m in Data.Codec.Types Data.Codec.Text Data.Codec Data.Codec.Pulse; do
-        ${fstar-exe} \
-          --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src \
-          --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
-          --z3rlimit 120 \
-          --cache_checked_modules --cache_dir cache --odir cache \
-          src/$m.fst || exit 1
-      done
-      # Extract the whole `Data.Codec.Pulse` module to C (library mode).
-      ${fstar-exe} \
-        --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src --include cache \
-        --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
-        --cache_checked_modules --cache_dir cache \
-        --codegen Custard --custard_backend C --custard_monomorphize_types true \
-        --custard_entry Data.Codec.Pulse.encode_bytes \
-        --custard_entry Data.Codec.Pulse.decode_bytes \
-        --odir $out \
-        src/Data.Codec.Pulse.fst || exit 1
+      ${verify-then-extract}
       # Compile the emitted C11 to a shared object + static lib.
       cc -c -Wall -Wextra -Werror -std=c11 -O2 -fPIC -I $out $out/Custard.c -o $out/Custard.o
       if [ "$(uname -s)" = Darwin ]; then
@@ -237,8 +262,57 @@ let
         cc -shared $out/Custard.o -o $out/lib${pname}.so
       fi
       ar rcs $out/lib${pname}.a $out/Custard.o
-      # Publish a stable header name alongside Custard.h.
-      cp $out/Custard.h $out/codec.h
+    '';
+    installPhase = "true";
+  };
+
+  # ── bench (`REQ-ISO-C-PERF`) ─────────────────────────────────────
+  #
+  # The measurement `REQ-ISO-C-PERF` requires: the extracted C against a
+  # hand-written C baseline for the same wire format.  The harness itself lives
+  # in `bench/`; this derivation builds and RUNS it, and its output is the
+  # recorded figure.  It fails the build if
+  #   - either driver fails its roundtrip self-check,
+  #   - the two drivers disagree on the sink (same bytes in, same values out), or
+  #   - any round is unresolved (a number that came from clock rounding).
+  #
+  # NOTE on reading `pulse.tsv` / `ref.tsv` from this derivation: a nix build
+  # runs in a sandbox, often alongside other builds, so its absolute ps/op are
+  # CONTAMINATED (the floor row shows it — it is ~5-10x the quiet-host figure).
+  # This target proves the harness BUILDS and RUNS and PASSES its gates; the
+  # headline figures in `README.md` come from `bench/run.sh` on a quiet host,
+  # which alternates the runs and keeps the minimum.  Use `run.sh` for numbers,
+  # this target for "the harness is wired in and self-checking".
+  #
+  # The pre-tightening side (`32aa8e8^`) is NOT extracted here: a nix build is
+  # not in a git repo, so only the current artifact is measured.  `run.sh`, run
+  # from a checkout, does both sides for the T9.2 comparison.
+  bench = mkDerivation {
+    pname = "${pname}-bench";
+    version = "0.1.0";
+    src = ./.;
+    nativeBuildInputs = [
+      fstar
+      fstar-checked
+    ];
+    inherit meta;
+    buildPhase = ''
+      mkdir -p $out
+      ${verify-then-extract}
+      cc -O2 -std=c11 -Wall -Wextra -Werror -I $out \
+        -o bench-ref   bench/bench-ref.c
+      cc -O2 -std=c11 -Wall -Wextra -Werror -I $out \
+        -o bench-pulse bench/bench-pulse.c $out/Custard.c
+      ./bench-ref   > ref.tsv   2> ref.err
+      ./bench-pulse > pulse.tsv 2> pulse.err
+      cat ref.err pulse.err >&2
+      grep -q 'roundtrip OK' ref.err   || { echo 'baseline self-check FAILED' >&2; exit 1; }
+      grep -q 'roundtrip OK' pulse.err || { echo 'extracted self-check FAILED' >&2; exit 1; }
+      test "$(grep -o 'sink=[0-9]*' ref.err)"   = "$(grep -o 'sink=[0-9]*' pulse.err)" \
+        || { echo 'baseline and extracted disagree on the sink' >&2; exit 1; }
+      awk -F'\t' '!/^#/ && $4 != 0 { exit 1 }' ref.tsv pulse.tsv \
+        || { echo 'unresolved rounds — a number came from clock rounding' >&2; exit 1; }
+      cp ref.tsv pulse.tsv $out/
     '';
     installPhase = "true";
   };
@@ -284,7 +358,7 @@ let
         --no_default_includes --include "$ULIB" $PULSE_INCS --include ./src --include cache \
         --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
         --cache_checked_modules --cache_dir cache \
-        --codegen Custard --custard_backend FSharp --custard_monomorphize_types true \
+        --codegen FSharp --custard_monomorphize_types true \
         --custard_entry Data.Codec.Pulse.encode_bytes \
         --custard_entry Data.Codec.Pulse.decode_bytes \
         --odir src-out \
@@ -301,5 +375,6 @@ in
     ocaml
     native
     fsharp
+    bench
     ;
 }
