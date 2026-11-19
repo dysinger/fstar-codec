@@ -58,7 +58,13 @@ _weakness_ — a loss of guarantee, stated with the reason it was accepted). Eac
 entry cites the paper's § and the F\* symbol that implements it, so a porter can
 read this one list and know exactly what to reproduce. Anchors `[D1]`–`[D13]`,
 `[S1]`–`[S9]`, `[W1]`–`[W10]` and `[O1]` are stable cross-reference targets, shared
-with the code and the engineering ledger in `openspec/`.
+with the code and the engineering ledger in `openspec/`. **`/lean-codec` has a
+departures list of its own, and its `[Dn]` ids are not these:** the two share the
+`[Dn]` spelling and point opposite ways on purpose — `[D2]`/`[D3]` here return one
+answer because a Custard-extracted C interpreter cannot return a list, while
+`[D2]`/`[D3]` there return the paper's pair list because the list _is_ the paper. A
+porter citing an id across the two repos must say which README they mean; this is
+not a numbering defect and neither list needs renumbering.
 
 Section numbers below refer to the paper's own sectioning as reproduced in
 `PAPER.md` (the paper uses a mix of `§n` and `§n.m`; where a fact lives in a
