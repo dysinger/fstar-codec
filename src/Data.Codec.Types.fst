@@ -4387,3 +4387,107 @@ let lemma_split_head (s: byte_seq) : Lemma
   (ensures s == Seq.cons (Seq.index s 0) (Seq.slice s 1 (Seq.length s)))
   = Seq.lemma_eq_intro s
       (Seq.cons (Seq.index s 0) (Seq.slice s 1 (Seq.length s)))
+
+
+(* ── The first [codec_v2] instance: M3 opens here (T4.0b, F90) ──────── *)
+
+
+(** [token_v] — the first inhabitant of [codec_v2] in [src/].
+
+    Until this exists the strict type is unexercised in the shipping build, and
+    a defect in the *type* would surface 27 times instead of once (`F90`).
+    [token] is the smallest codec, and it is proved in three spike files.
+
+    [wfcv] is [true] because every byte is encodable; [rest_cond_v] is [true]
+    for the same reason — a fixed-width leaf has nothing to over-consume, which
+    is exactly the shape `[W9]`'s contrast case distinguishes from the greedy
+    ones.  Both laws are the spike's proofs, transcribed.
+
+    @returns A [codec_v2 byte] whose decoder reads one byte and returns the
+    remainder. *)
+let token_v : codec_v2 byte = {
+  enc         = (fun x -> Some (Seq.create 1 x));
+  dec         = (fun s -> if Seq.length s >= 1
+                          then Some (Seq.index s 0, Seq.slice s 1 (Seq.length s))
+                          else None);
+  wfcv        = (fun _ -> true);
+  rest_cond   = (fun _ -> True);
+  rest_cond_v = (fun _ _ -> True);
+  law_fwd     = (fun x e r ->
+    Seq.lemma_create_len 1 x;
+    Seq.lemma_len_append (Seq.create 1 x) r;
+    Seq.lemma_index_app1 (Seq.create 1 x) r 0;
+    Seq.lemma_index_create 1 x 0;
+    Seq.lemma_eq_intro
+      (Seq.slice (Seq.append (Seq.create 1 x) r) 1 (Seq.length r + 1)) r);
+  law_bwd     = (fun s v r -> lemma_split_head s);
+}
+
+(** [byte_val_v] — M3 leaf: an expected byte (T4.1).
+
+    The strict counterpart of [byte_val].  Fixed width, so [rest_cond_v] is
+    [True] and [law_fwd] is the same `create`/`append` algebra as [token_v].
+    [law_bwd] is [lemma_split_head] again: a one-byte decode pins the head. *)
+let byte_val_v (b: byte) : codec_v2 unit = {
+  enc         = (fun _ -> Some (Seq.create 1 b));
+  dec         = (fun s -> if Seq.length s >= 1 && Seq.index s 0 = b
+                          then Some ((), Seq.slice s 1 (Seq.length s))
+                          else None);
+  wfcv        = (fun _ -> true);
+  rest_cond   = (fun _ -> True);
+  rest_cond_v = (fun _ _ -> True);
+  law_fwd     = (fun x e r ->
+    Seq.lemma_create_len 1 b;
+    Seq.lemma_len_append (Seq.create 1 b) r;
+    Seq.lemma_index_app1 (Seq.create 1 b) r 0;
+    Seq.lemma_index_create 1 b 0;
+    Seq.lemma_eq_intro
+      (Seq.slice (Seq.append (Seq.create 1 b) r) 1 (Seq.length r + 1)) r);
+  law_bwd     = (fun s v r -> lemma_split_head s);
+}
+
+
+(** [satisfy_v] — M3 leaf: a byte matching a predicate (T4.1).
+
+    [wfcv] carries the predicate itself, which is the live condition: the
+    caller must know the value is in the predicate's domain for [enc] to be
+    meaningful.  Fixed width, so [rest_cond_v] is [True]. *)
+let satisfy_v (f: byte -> Tot bool) : codec_v2 byte = {
+  enc         = (fun v -> Some (Seq.create 1 v));
+  dec         = (fun s -> if Seq.length s >= 1
+                          then (let b = Seq.index s 0 in
+                                if f b
+                                then Some (b, Seq.slice s 1 (Seq.length s))
+                                else None)
+                          else None);
+  wfcv        = (fun v -> f v);
+  rest_cond   = (fun _ -> True);
+  rest_cond_v = (fun _ _ -> True);
+  law_fwd     = (fun x e r ->
+    Seq.lemma_create_len 1 x;
+    Seq.lemma_len_append (Seq.create 1 x) r;
+    Seq.lemma_index_app1 (Seq.create 1 x) r 0;
+    Seq.lemma_index_create 1 x 0;
+    Seq.lemma_eq_intro
+      (Seq.slice (Seq.append (Seq.create 1 x) r) 1 (Seq.length r + 1)) r);
+  law_bwd     = (fun s v r -> lemma_split_head s);
+}
+
+
+(** [pure_v] — M3 leaf: the constant codec (T4.1).
+
+    The one leaf whose [wfcv] carries information: [wfcv v := (v == x)], the
+    fold F37 settled on after three candidates.  Without it [law_fwd] is
+    **false** — the decoder returns [x] regardless of input, so the law could
+    only hold for [v = x].  Consumes no bytes, so [law_bwd] is `[] ++ r = r`. *)
+let pure_v (#a: eqtype) (x: a) : codec_v2 a = {
+  enc         = (fun _ -> Some Seq.empty);
+  dec         = (fun s -> Some (x, s));
+  wfcv        = (fun v -> v = x);
+  rest_cond   = (fun _ -> True);
+  rest_cond_v = (fun _ _ -> True);
+  law_fwd     = (fun (v: a) (e: byte_seq) (r: byte_seq) ->
+    Seq.lemma_eq_intro r (Seq.append Seq.empty r));
+  law_bwd     = (fun s v r ->
+    Seq.lemma_eq_intro s (Seq.append Seq.empty r));
+}

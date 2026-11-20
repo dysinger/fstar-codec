@@ -92,11 +92,17 @@ type decode_result (a: Type0) = either decode_error (a & nat)   (* (value, consu
 ```
 
 The reason is that the decoder has to be the one Custard extracts. A list per
-parse is an allocation on the hot path, it has no lowering to a buffer and
-cursor, and backtracking costs are exponential — the paper's own admitted cost
-(§4.4: "limits its applicability to large inputs"). The extraction contract is a
-populated buffer and a `u32` cursor; a returned list is the one shape that cannot
-become that. Backtracking is what makes a decoding law unconditional: with every
+parse is an allocation on the hot path, and backtracking costs are exponential —
+the paper's own admitted cost (§4.4: "limits its applicability to large inputs").
+
+The extraction reason is narrower than "a list cannot lower to a buffer and
+cursor", and it is worth stating exactly (`research.md` F89 in
+`codec-strict-isomorphism`). A list of *suffixes* lowers fine: a suffix of the
+caller's buffer is a pointer and a length, so `[(a, Suffix)]` needs no copy.
+What does not lower is the **return type**: the C entry point
+(`decode_bytes`) returns **one** `decode_result_c` by value, and `a` is a closed
+8-leaf tag rather than an F\* type, so there is no C representation for "every
+answer" at that boundary. The constraint is the ABI, not the data. Backtracking is what makes a decoding law unconditional: with every
 answer retained, the correct one is always present, so no stopping condition is
 needed. With a single answer the decoder may pick a greedy wrong one, and the
 loss must be paid explicitly — that payment is `[D9]`, and the guarantee given up
@@ -460,6 +466,32 @@ supplies_. Of the three hypotheses only `wfcv_prop` is _purely_ a cost — it ex
 solely to mirror `wfcv`; `wfcv` drives a real runtime check and `rest_cond` a real
 stopping condition. `codec_v2` removes `wfcv_prop`.
 
+> **CORRECTION (2026-11-19) — what `[W1]`'s cost is actually attached to.**  An
+> earlier form of this entry, and the ledger row that pointed here, attributed
+> the conditional law to `[D2]`'s single-answer decoder and named `[O1]` as the
+> route that would close it.  **That is wrong, and `[O1]` cannot close it.**
+>
+> `rest_cond` is an artefact of **prefix decoding** (`[D1]`/`[D7]`), which the
+> paper does not do — §4.1's `parse` filters on `(x, "")`, i.e. whole-string.
+> Under `[O1]`, `dec_spec` returns every answer, but the *maximal* answer for a
+> prefix read of `enc xs ++ r` is still `(xs, |xs|)` and never `(xs, |xs|+|r|)`.
+> So `rest_cond_v` would remain in `law_fwd` even with every answer retained.
+>
+> The evidence is in `src/`, and it is per-leaf rather than uniform:
+> `varint`'s `rest_cond` is `fun _ _ -> True` (its decoder stops at a
+> terminator), `satisfy_many0`'s is `|r| = 0 \/ not (f r[0])` (a greedy run
+> would eat into `r`), and `digits_to_int`'s is a **value-indexed** three-way
+> disjunct.  The third is only expressible because `[S7]` gave `law_fwd` the
+> value; no formulation that withholds the value can state it.
+>
+> **What this does and does not change.**  `[W1]` stands as a recorded loss —
+> the law is conditional, and that is a real departure from the paper.  What
+> changes is its **cause**: not "the C path is single-answer" but "the codec
+> decodes a prefix".  The consequence is that `[O1]` is **not** the route to an
+> unconditional law, and the ledger row no longer says it is.  The ceiling is
+> therefore: these are the strongest laws available **subject to the delivery
+> goal making the C path a conjunct**, not the strongest possible.
+
 **[W2] Invertibility is _solver-borne_, not structural.**
 "All codecs are invertible" is a lemma family, not one argument, and each lemma is
 sensitive to `--z3rlimit` and `--fuel`. A reader cannot verify the claim by
@@ -759,8 +791,15 @@ the solver actually discharges. The risk that killed earlier attempts was
 precisely that the "which answer did we pick" fact is _unprovable_, not merely
 unproved.
 
+> **CORRECTION (2026-11-19, `[W1]`).**  `[O1]` does **not** deliver an
+> unconditional law.  It retains every answer, which makes the correct answer
+> *present*, but `rest_cond_v` guards *which answer is maximal* for a prefix
+> read — still needed under `[O1]`.  The benefit it buys is therefore
+> "the right answer is in the list", not "the law is unconditional".  The
+> verdict below still stands; only its benefit clause was overstated.
+
 **Verdict: rejected for this library's delivery goal.** The benefit `[O1]` buys is
-a purely specification-side guarantee — an unconditional law. The C artifact is
+a specification-side guarantee, not an unconditional law. The C artifact is
 unchanged by whether `dec_spec` returns a list, and the delivery goal is
 "correct in code, fast in C": doubling the combinator surface and adding a
 per-node bridge obligation buys a guarantee the *product* cannot exhibit. It
@@ -786,7 +825,7 @@ settled losses; the project's goal is that every one of them closes.
 
 | # | gap | where it closes |
 |---|---|---|
-| `[W1]` | an unconditional law | not achievable while the C path stays single-answer (see `[O1]`) |
+| `[W1]` | an unconditional law | **not closable by `[O1]`** — see `[W1]`'s correction: `rest_cond` comes from *prefix* decoding, which retaining every answer does not change |
 | `[W2]` | structural rather than solver-borne invertibility | needs an inductive `Codec` or `[O1]`; both argued against on extraction grounds |
 | `[W3]` | `enc` partiality enforced by the type | `codec_v2`'s `a -> option byte_seq` |
 | `[W4]` | backtracking and a caller-free `many` | inherent to `[D2]`; avoided cost is the paper's §4.4 |

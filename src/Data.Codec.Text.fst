@@ -186,3 +186,71 @@ let char_is_printable (c: FStar.Char.char) : bool =
 
 (** [digit_byte] — a codec for a single ASCII digit byte. *)
 let digit_byte : codec byte = satisfy is_digit
+
+
+(* ── M3 strict instance (T4.1): the [codec_v2] counterpart of [text] ── *)
+
+
+(** [text_dec_v] — remainder-returning decoder for a fixed byte string.
+
+    The COUNT form is [text]'s own decoder; this is the same test with the
+    remainder returned instead of the count, which is what [codec_v2.dec]
+    needs. *)
+let text_dec_v (expected: byte_seq) (input: byte_seq)
+  : Tot (option (unit & r:byte_seq{ Seq.length r <= Seq.length input }))
+  = let n = Seq.length expected in
+    if Seq.length input < n then None
+    else if Seq.eq (Seq.slice input 0 n) expected
+    then Some ((), Seq.slice input n (Seq.length input))
+    else None
+
+
+(** [lemma_text_v_ok] — the successful branch, stated on its own.
+
+    SMT does not reduce an `if` chain through the definition; giving the
+    success condition as a hypothesis lets it invert the decoder instead.
+    Without this, [law_fwd] fails with a bare "Could not prove post-condition". *)
+let lemma_text_v_ok (expected input: byte_seq) : Lemma
+  (requires Seq.length input >= Seq.length expected /\
+            Seq.eq (Seq.slice input 0 (Seq.length expected)) expected)
+  (ensures text_dec_v expected input
+             = Some ((), Seq.slice input (Seq.length expected) (Seq.length input)))
+  = ()
+
+
+(** [lemma_text_v_fwd] — the decoder on its own encoding followed by [r]. *)
+let lemma_text_v_fwd (e r: byte_seq) : Lemma
+  (ensures text_dec_v e (Seq.append e r) = Some ((), r))
+  = Seq.lemma_len_append e r;
+    lemma_slice_append_prefix e r;
+    lemma_text_v_ok e (Seq.append e r);
+    Seq.lemma_eq_intro (Seq.slice (Seq.append e r) (Seq.length e)
+                          (Seq.length (Seq.append e r))) r
+
+
+(** [lemma_text_v_bwd] — a successful decode pins the remainder to the slice. *)
+let lemma_text_v_bwd (expected input: byte_seq)
+  (r: remainder input) : Lemma
+  (requires text_dec_v expected input = Some ((), r))
+  (ensures r == Seq.slice input (Seq.length expected) (Seq.length input))
+  = ()
+
+
+(** [text_v] — M3 leaf: a fixed byte string (T4.1).
+
+    Fixed width, so [rest_cond_v] is [True].  [law_bwd] names its witness
+    directly: [enc () = Some expected], so F\* builds the [exists] from a
+    conjunct in context rather than needing an [exists_intro] (F45). *)
+let text_v (expected: byte_seq) : codec_v2 unit = {
+  enc         = (fun _ -> Some expected);
+  dec         = (fun input -> text_dec_v expected input);
+  wfcv        = (fun _ -> true);
+  rest_cond   = (fun _ -> True);
+  rest_cond_v = (fun _ _ -> True);
+  law_fwd     = (fun x e r ->
+    lemma_text_v_fwd expected r);
+  law_bwd     = (fun s v r ->
+    lemma_text_v_bwd expected s r;
+    Seq.lemma_eq_intro s (Seq.append expected
+      (Seq.slice s (Seq.length expected) (Seq.length s))));
+}

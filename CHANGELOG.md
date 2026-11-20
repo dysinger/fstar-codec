@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`codec_v2` instances begin to land in `src/` (T4.0b, T4.1).**  The strict
+  type had no inhabitant in the shipping build, so a defect in the *type* would
+  have surfaced 27 times during the M3 migration instead of once.  Five leaves
+  are now strict: `token_v`, `byte_val_v`, `satisfy_v`, `pure_v`
+  (`Data.Codec.Types`) and `text_v` (`Data.Codec.Text`).  Both laws on each,
+  transcribed from the proofs in `codec-strict-isomorphism`'s spike suite;
+  `make check` green (11 modules), 0 admits.  `text_v` needed one extra lemma
+  (`lemma_text_v_ok`): SMT will not reduce a conditional decoder's `if` chain
+  through its definition, so the successful branch is stated as a hypothesis
+  and the solver inverts the decoder instead of unfolding it.
+
 - **`bench/` — the C benchmark harness (`REQ-ISO-C-PERF`, T9.1/T9.2).**  There
   was no benchmark in this repository, so the "fast in C" conjunct of the
   delivery criterion was unmeasured.  `bench/bench-pulse.c` drives the extracted
@@ -23,6 +34,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`README.md` `[W1]`, `[D2]` and `[O1]`: three wrong reasons, same decisions
+  (T3.6/T3.7, `codec-strict-isomorphism` F89).**  `[W1]`'s ledger row said an
+  unconditional law was "not achievable while the C path stays single-answer"
+  and named `[O1]` as the route.  `rest_cond` is an artefact of **prefix**
+  decoding, not of the single-answer decoder: under `[O1]` the maximal answer
+  for a prefix read of `enc xs ++ r` is still `(xs, |xs|)`, so `rest_cond_v`
+  survives.  `[D2]` justified itself with "a returned list cannot lower to a
+  buffer and cursor", which is false for a list of suffixes; the real
+  constraint is the C ABI returning one `decode_result_c` by value.  Every
+  *decision* in those entries stands — only their stated causes were wrong, and
+  the corrected causes change what `[O1]` would buy.
 - **The `native`, `ocaml`, and `fsharp` derivations used a flag this toolchain
   rejects.**  All three passed `--codegen Custard` (and `--custard_backend`),
   while the accepted enum is `OCaml|FSharp|KrmlC|KrmlRust|C|Cherry|Plugin` and
