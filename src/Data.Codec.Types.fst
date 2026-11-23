@@ -60,6 +60,7 @@ open FStar.Math.Lemmas
 module Seq = FStar.Seq
 module U8 = FStar.UInt8
 module U32 = FStar.UInt32
+module Classical = FStar.Classical
 
 
 (** Core Types *)
@@ -4324,32 +4325,27 @@ let remainder (s: byte_seq) = r:byte_seq{ Seq.length r <= Seq.length s }
     Quantified over [eqtype] (F5/F10): every downstream value type is a
     record/list/option of [string]/[int]/[byte], so the restriction is free.
 
-    ⚠ Migration status: `token`, `product`, `alt`, `sep_by1`, greedy
-    `satisfy_many0`, `count`, `map_` (with `map_retract_on_image`) and `sum`
-    are spike-proved against this exact record, both laws (see
-    `research.md` F27/F28 in the `codec-strict-isomorphism` change).  Of the
-    LEAVES, `byte_val`, `satisfy`, `uint8` and `pure` now also have both laws
-    (`research.md` F37): `pure`'s value-dependent guard folds to
-    `wfcv v := (v == x)` and needs no extra hypothesis — a deletion test shows
-    the fold is load-bearing.  `bytes` (`research.md` F38) and all four of
-    `word16be`/`word16le`/`word32be`/`word32le` (`research.md` F44, in
-    `spike-words.fst`) also carry BOTH laws now; the fixed-width four are
-    strictly simpler than `bytes` — a literal consumed length means no refined
-    accessor and no `exists_intro`.
+    ⚠ Migration status (2026-11-21, `codec-strict-isomorphism` F94/F95):
+    the minimal ABI is LANDED and the structural combinators are IN `src/`.
+    Instances present at this record: the five leaves `token_v`, `byte_val_v`,
+    `satisfy_v`, `pure_v`, `text_v`, and the five combinators `product_v`,
+    `sum_v`, `map_v` (the paper's IsoFunctor `$`, takes an `iso`), `count_v`,
+    `label_v`.  Each is transcribed from a 0-admit spike on THIS record
+    (`spike-f94-paper-iso.fst`, `spike-sum.fst`, `spike-f95-t42.fst`).  A leaf
+    whose value guard matters (`satisfy`, `pure`, `count`) carries it in
+    `enc`'s image, not in the laws — that is F94's rule and why the laws need
+    no side condition.
 
-    Still NOT proved at this record:
-      - `text`  — swept CANONICAL (`CanonicalitySweep.fst`), so its `law_bwd`
-                  is statable and true; an ordinary proof task (T1.7d).
-      - `varint`, `digits_to_int` — their `law_bwd` is **FALSE** over the
-                  library's decoders (`VarintNonCanonical.fst` for overlong
-                  LEB128; `[0x80;0x00]` decodes to `(0,2)` while `enc 0` has
-                  length 1).  The fix is canonical readers (F41/F42, Route A),
-                  not a weaker law; `law_fwd` for `varint` is already proved at
-                  the full `wfcv = [0, 2^35)`.  The Pulse/C decoder must change
-                  in lockstep or the two disagree.
-    The `sep_by1*` / `opt_prefixed` variants have transcription verdicts only
-    (`t0.3-table.md`); each needs its own spike before its instance is claimed.
-    Do not assume a combinator's laws transfer. *)
+    Not yet ported to this record (future tasks):
+      - `alt` (T4.3), `satisfy_many0/1`/`one_of` (T4.4), `take_until` (T4.5),
+        `sep_by1*` (T4.6), `opt_prefixed` (T4.7), the binary leaves
+        (`uint8`, `word16*/word32*`, `varint`, `digits_to_int`, T4.8),
+        `bytes` (T4.12).
+      - `varint`/`digits_to_int`'s backward law is TRUE only over the
+        CANONICAL readers (`VarintNonCanonical.fst`; `probe-f41`/`probe-f42`);
+        the legacy decoders accept overlong LEB128 / non-padded forms.
+      Each remaining combinator needs its own spike before its instance is
+      claimed — do not assume the laws transfer (F90). *)
 noeq
 type codec_v2 (a: eqtype) = {
   enc         : a -> Tot (option byte_seq);
@@ -4503,4 +4499,388 @@ let pure_v (#a: eqtype) (x: a) : codec_v2 a = {
     Seq.lemma_eq_intro r (Seq.append Seq.empty r));
   law_bwd     = (fun s v r ->
     Seq.lemma_eq_intro s (Seq.append Seq.empty r));
+}
+
+
+(* ── T4.2: structural combinators on the strict minimal ABI (F94/F95) ───────
+   Every combinator below is transcribed from a 0-admit spike on this exact
+   `codec_v2` record (minimal ABI: `law_fwd` = `requires enc x = Some e`):
+     `product` — F94 (`spike-f94-paper-iso.fst`)
+     `sum`     — `spike-sum.fst` (already on the minimal ABI)
+     `map_`    — F94, as the paper's IsoFunctor `$` (takes an `iso`)
+     `count`   — F95 (`spike-f95-t42.fst`), re-proved on the minimal ABI
+     `label`   — F95, the identity on the laws
+   A value guard a leaf needs (e.g. `count`'s "exactly m elements") lives in
+   `enc`'s image, not in the laws (F94's rule; cf. `satisfy_v`, `pure_v`). *)
+
+
+(** [encf_v] — the encoding of [v], or [Seq.empty] if [enc] fails.  Only used
+    inside witness lemmas, where a failing [enc] is already excluded by a
+    hypothesis (F94). *)
+let encf_v (#a: eqtype) (c: codec_v2 a) (v: a) : Tot byte_seq =
+  match c.enc v with Some e -> e | None -> Seq.empty
+
+
+(** [product_v] — PAPER §5.1's bifunctor `(×)`: run `c1` then `c2`.
+
+    [enc] is `append (enc v1) (enc v2)`; [dec] decodes `c1`, then `c2` on the
+    remainder.  Both laws are F94's, 0 admit. *)
+let product_enc_v (#a #b: eqtype) (c1: codec_v2 a) (c2: codec_v2 b) (x: a & b)
+  : Tot (option byte_seq)
+  = match c1.enc (fst x), c2.enc (snd x) with
+    | Some e1, Some e2 -> Some (Seq.append e1 e2)
+    | _ -> None
+
+let product_dec_v (#a #b: eqtype) (c1: codec_v2 a) (c2: codec_v2 b) (s: byte_seq)
+  : Tot (option ((a & b) & remainder s))
+  = match c1.dec s with
+    | None -> None
+    | Some (v1, r1) ->
+      (match c2.dec r1 with
+       | None -> None
+       | Some (v2, r) -> Some ((v1, v2), r))
+
+(** Helper for [product_v]'s [law_bwd]: once both components' witnesses are
+    named, the composite's is their concatenation. *)
+let lemma_product_v_witness (#a #b: eqtype) (c1: codec_v2 a) (c2: codec_v2 b)
+  (s: byte_seq) (v: a & b) (r: remainder s)
+  (v1: a) (r1: remainder s) (v2: b) (r2: remainder r1)
+  : Lemma (requires c1.dec s = Some (v1, r1) /\ c2.dec r1 = Some (v2, r2) /\
+                     product_dec_v c1 c2 s = Some (v, r) /\
+                     product_enc_v c1 c2 v = Some (Seq.append (encf_v c1 v1) (encf_v c2 v2)) /\
+                     s == Seq.append (encf_v c1 v1) r1 /\
+                     r1 == Seq.append (encf_v c2 v2) r2 /\ r == r2)
+          (ensures (exists (e: byte_seq). product_enc_v c1 c2 v = Some e /\ s == Seq.append e r))
+  = Seq.append_assoc (encf_v c1 v1) (encf_v c2 v2) r2;
+    Classical.exists_intro
+      (fun (e: byte_seq) -> product_enc_v c1 c2 v = Some e /\ s == Seq.append e r)
+      (Seq.append (encf_v c1 v1) (encf_v c2 v2))
+
+let product_v (#a #b: eqtype) (c1: codec_v2 a) (c2: codec_v2 b) : codec_v2 (a & b) = {
+  enc     = product_enc_v c1 c2;
+  dec     = product_dec_v c1 c2;
+  wfcv    = (fun x -> c1.wfcv (fst x) && c2.wfcv (snd x));
+  rest_cond   = (fun _ -> True);
+  rest_cond_v = (fun x r -> c1.rest_cond_v (fst x) (Seq.append (encf_v c2 (snd x)) r) /\
+                            c2.rest_cond_v (snd x) r);
+  law_fwd = (fun x e r ->
+    let v1 = fst x in let v2 = snd x in
+    match c1.enc v1, c2.enc v2 with
+    | Some e1, Some e2 ->
+      c1.law_fwd v1 e1 (Seq.append e2 r);
+      c2.law_fwd v2 e2 r;
+      Seq.append_assoc e1 e2 r
+    | _ -> ());
+  law_bwd = (fun s v r ->
+    let v1 = fst v in let v2 = snd v in
+    match c1.dec s with
+    | None -> ()
+    | Some (v1', r1) ->
+      c1.law_bwd s v1' r1;
+      (match c2.dec r1 with
+       | None -> ()
+       | Some (v2', r') ->
+         c2.law_bwd r1 v2' r';
+         lemma_product_v_witness c1 c2 s v r v1' r1 v2' r'));
+}
+
+
+(** [iso] — PAPER §3.1's partial isomorphism `Iso α β`, with the inverse law
+    as a pair of lemmas.  Used by [map_v] (the IsoFunctor `$`): the retract is
+    the `iso`'s own law, which is why [map_v] needs no side condition on the
+    laws (F94; cf. the legacy [map_] and `[W5]`). *)
+noeq
+type iso (a: eqtype) (b: eqtype) = {
+  i_f    : a -> Tot (option b);
+  i_g    : b -> Tot (option a);
+  iso_fg : (x: a) -> (y: b) -> Lemma (requires i_f x = Some y) (ensures i_g y = Some x);
+  iso_gf : (y: b) -> (x: a) -> Lemma (requires i_g y = Some x) (ensures i_f x = Some y);
+}
+
+
+(** [map_enc_v] / [map_dec_v] — [map_v]'s encoding goes through [i_g], the
+    decoding through [i_f].  ([i_g] first on the way out is the paper's
+    contravariance for a printer; here it is just "encode the source value".) *)
+let map_enc_v (#a #b: eqtype) (i: iso a b) (c: codec_v2 a) (v: b) : Tot (option byte_seq)
+  = match i.i_g v with None -> None | Some av -> c.enc av
+
+let map_dec_v (#a #b: eqtype) (i: iso a b) (c: codec_v2 a) (s: byte_seq)
+  : Tot (option (b & remainder s))
+  = match c.dec s with
+    | None -> None
+    | Some (av, r) -> (match i.i_f av with None -> None | Some v -> Some (v, r))
+
+let lemma_map_v_witness (#a #b: eqtype) (i: iso a b) (c: codec_v2 a)
+  (s: byte_seq) (v: b) (r: remainder s) (av: a)
+  : Lemma (requires c.dec s = Some (av, r) /\ i.i_f av = Some v /\ i.i_g v = Some av)
+          (ensures (exists (e: byte_seq). map_enc_v i c v = Some e /\ s == Seq.append e r))
+  = c.law_bwd s av r;
+    Classical.exists_intro
+      (fun (e: byte_seq) -> map_enc_v i c v = Some e /\ s == Seq.append e r)
+      (encf_v c av)
+
+(** [map_v] — PAPER §3.1's IsoFunctor `$`: apply a partial isomorphism [i] to a
+    codec's value type.  The retract [i_gf] is what makes [law_fwd] close with
+    no `wfcv` (F94).  Not to be confused with the legacy [map_], which took
+    arbitrary `f`/`g` plus a retract side condition (`[W5]`, now closed). *)
+let map_v (#a #b: eqtype) (i: iso a b) (c: codec_v2 a) : codec_v2 b = {
+  enc     = map_enc_v i c;
+  dec     = map_dec_v i c;
+  wfcv    = (fun v -> match i.i_g v with None -> false | Some av -> c.wfcv av);
+  rest_cond   = (fun _ -> True);
+  rest_cond_v = (fun v r -> match i.i_g v with None -> False | Some av -> c.rest_cond_v av r);
+  law_fwd = (fun v e r ->
+    match i.i_g v with
+    | None -> ()
+    | Some av -> c.law_fwd av e r; i.iso_gf v av);
+  law_bwd = (fun s v r ->
+    match c.dec s with
+    | None -> ()
+    | Some (av, r1) -> i.iso_fg av v; lemma_map_v_witness i c s v r av);
+}
+
+
+(** [label_v] — attach a descriptive name.  The strict record carries no
+    error/label channel, so [label_v] is the identity on [enc]/[dec] and passes
+    both laws straight through.  Kept so the 27-codec surface is complete. *)
+let label_v (#a: eqtype) (c: codec_v2 a) : codec_v2 a = {
+  enc     = c.enc;
+  dec     = c.dec;
+  wfcv    = c.wfcv;
+  rest_cond   = c.rest_cond;
+  rest_cond_v = c.rest_cond_v;
+  law_fwd = (fun x e r -> c.law_fwd x e r);
+  law_bwd = (fun s v r -> c.law_bwd s v r);
+}
+
+
+(* ── sum (PAPER §5.1 `+`/`|`; tag-first per `[D3]`) — `spike-sum.fst` ───── *)
+
+(** cons-append interchange: `(x :: s1) ++ s2 == x :: (s1 ++ s2)`. *)
+let lemma_cons_assoc_v (tag: byte) (e r: byte_seq)
+  : Lemma (Seq.append (Seq.cons tag e) r == Seq.append (Seq.create 1 tag) (Seq.append e r))
+  = Seq.append_assoc (Seq.create 1 tag) e r
+
+let lemma_slice_recompose_v (s: byte_seq)
+  : Lemma (requires Seq.length s >= 1)
+          (ensures s == Seq.append (Seq.create 1 (Seq.index s 0))
+                                   (Seq.slice s 1 (Seq.length s)))
+  = Seq.lemma_len_append (Seq.create 1 (Seq.index s 0)) (Seq.slice s 1 (Seq.length s));
+    Seq.lemma_eq_intro s
+      (Seq.append (Seq.create 1 (Seq.index s 0)) (Seq.slice s 1 (Seq.length s)))
+
+let lemma_head_of_cons_append_v (tag: byte) (e r: byte_seq)
+  : Lemma (Seq.index (Seq.append (Seq.cons tag e) r) 0 = tag)
+  = lemma_cons_assoc_v tag e r;
+    Seq.lemma_create_len 1 tag;
+    Seq.lemma_index_app1 (Seq.create 1 tag) (Seq.append e r) 0;
+    Seq.lemma_index_create 1 tag 0
+
+let lemma_tail_of_cons_append_v (tag: byte) (e r: byte_seq)
+  : Lemma (Seq.slice (Seq.append (Seq.cons tag e) r) 1
+                     (Seq.length (Seq.append (Seq.cons tag e) r)) == Seq.append e r)
+  = lemma_cons_assoc_v tag e r;
+    Seq.lemma_create_len 1 tag;
+    Seq.lemma_len_append (Seq.create 1 tag) (Seq.append e r);
+    Seq.lemma_eq_intro
+      (Seq.slice (Seq.append (Seq.cons tag e) r) 1
+                 (Seq.length (Seq.append (Seq.cons tag e) r)))
+      (Seq.append e r)
+
+let sum_enc_v (#a #b: eqtype) (c1: codec_v2 a) (c2: codec_v2 b) (v: either a b)
+  : Tot (option byte_seq)
+  = match v with
+    | Inl v1 -> (match c1.enc v1 with Some e -> Some (Seq.cons 0x00uy e) | None -> None)
+    | Inr v2 -> (match c2.enc v2 with Some e -> Some (Seq.cons 0x01uy e) | None -> None)
+
+let sum_dec_v (#a #b: eqtype) (c1: codec_v2 a) (c2: codec_v2 b) (s: byte_seq)
+  : Tot (option (either a b & remainder s))
+  = if Seq.length s < 1 then None
+    else
+      let tag = Seq.index s 0 in
+      let rest = Seq.slice s 1 (Seq.length s) in
+      if tag = 0x00uy then
+        (match c1.dec rest with Some (v1, r1) -> Some (Inl v1, r1) | None -> None)
+      else if tag = 0x01uy then
+        (match c2.dec rest with Some (v2, r2) -> Some (Inr v2, r2) | None -> None)
+      else None
+
+let lemma_recompose_v (s rest: byte_seq)
+  : Lemma (requires Seq.length s >= 1 /\ rest == Seq.slice s 1 (Seq.length s))
+          (ensures s == Seq.cons (Seq.index s 0) rest)
+  = Seq.lemma_eq_intro s (Seq.cons (Seq.index s 0) rest)
+
+let sum_law_fwd_v (#a #b: eqtype) (c1: codec_v2 a) (c2: codec_v2 b)
+  (x: either a b) (e: byte_seq) (r: byte_seq)
+  : Lemma (requires sum_enc_v c1 c2 x = Some e)
+          (ensures sum_dec_v c1 c2 (Seq.append e r) = Some (x, r))
+  = match x with
+    | Inl v1 ->
+      (match c1.enc v1 with
+       | Some e1 -> c1.law_fwd v1 e1 r;
+                    lemma_head_of_cons_append_v 0x00uy e1 r;
+                    lemma_tail_of_cons_append_v 0x00uy e1 r
+       | None -> ())
+    | Inr v2 ->
+      (match c2.enc v2 with
+       | Some e2 -> c2.law_fwd v2 e2 r;
+                    lemma_head_of_cons_append_v 0x01uy e2 r;
+                    lemma_tail_of_cons_append_v 0x01uy e2 r
+       | None -> ())
+
+let sum_law_bwd_v (#a #b: eqtype) (c1: codec_v2 a) (c2: codec_v2 b)
+  (x: either a b) (s: byte_seq) (r: remainder s)
+  : Lemma (requires sum_dec_v c1 c2 s = Some (x, r))
+          (ensures (exists (e: byte_seq). sum_enc_v c1 c2 x = Some e /\ s == Seq.append e r))
+  = if Seq.length s < 1 then ()
+    else
+      let tag = Seq.index s 0 in
+      let rest = Seq.slice s 1 (Seq.length s) in
+      if tag = 0x00uy then
+        (match c1.dec rest with
+         | Some (v1, r1) ->
+           c1.law_bwd rest v1 r1;
+           lemma_recompose_v s rest;
+           (match c1.enc v1 with
+            | Some e1 -> Seq.append_assoc (Seq.create 1 0x00uy) e1 r
+            | None -> ())
+         | None -> ())
+      else if tag = 0x01uy then
+        (match c2.dec rest with
+         | Some (v2, r2) ->
+           c2.law_bwd rest v2 r2;
+           lemma_recompose_v s rest;
+           (match c2.enc v2 with
+            | Some e2 -> Seq.append_assoc (Seq.create 1 0x01uy) e2 r
+            | None -> ())
+         | None -> ())
+      else ()
+
+(** [sum_v] — a tagged union: tag `0x00` selects `c1`, `0x01` selects `c2`,
+    any other byte fails (`[D3]` tag-first).  Both laws are `spike-sum.fst`. *)
+let sum_v (#a #b: eqtype) (c1: codec_v2 a) (c2: codec_v2 b) : codec_v2 (either a b) = {
+  enc     = sum_enc_v c1 c2;
+  dec     = sum_dec_v c1 c2;
+  wfcv    = (fun v -> match v with
+                      | Inl v1 -> c1.wfcv v1
+                      | Inr v2 -> c2.wfcv v2);
+  rest_cond   = (fun _ -> True);
+  rest_cond_v = (fun _ _ -> True);
+  law_fwd = (fun x e r -> sum_law_fwd_v c1 c2 x e r);
+  law_bwd = (fun s x r -> sum_law_bwd_v c1 c2 x s r);
+}
+
+
+(* ── count (PAPER §6.1 `count`; positional) — F95 ──────────────────────────
+   The "exactly m elements" guard lives in `enc`'s image ([count_enc_m]), not
+   in the laws (F94's rule; the legacy `wfcv = |vs| = m` was carrying it). *)
+
+let rec count_enc_v (#a: eqtype) (c: codec_v2 a) (vs: list a)
+  : Tot (option byte_seq) (decreases vs)
+  = match vs with
+    | [] -> Some Seq.empty
+    | v :: tl -> (match c.enc v, count_enc_v c tl with
+                  | Some e, Some etl -> Some (Seq.append e etl)
+                  | _ -> None)
+
+(** [count_enc_m] — the encoding, guarded by "exactly [m] elements", so that
+    [enc]'s image is exactly the domain [count_dec] accepts. *)
+let count_enc_m_v (#a: eqtype) (c: codec_v2 a) (m: nat) (vs: list a) : Tot (option byte_seq)
+  = if List.Tot.length vs = m then count_enc_v c vs else None
+
+let rec count_dec_v (#a: eqtype) (c: codec_v2 a) (m: nat) (s: byte_seq)
+  : Tot (option (list a & remainder s)) (decreases m)
+  = if m = 0 then Some ([], s)
+    else match c.dec s with
+         | None -> None
+         | Some (v, r1) ->
+           (match count_dec_v c (m - 1) r1 with
+            | None -> None
+            | Some (tl, r) -> Some (v :: tl, r))
+
+(** [count_dec_v] always returns a list of length [m], so [count_enc_m_v]
+    reduces to [count_enc_v] under [law_bwd]'s hypothesis. *)
+let rec lemma_count_dec_v_len (#a: eqtype) (c: codec_v2 a) (m: nat) (s: byte_seq) (vs: list a)
+  (r: remainder s)
+  : Lemma (requires count_dec_v c m s = Some (vs, r))
+          (ensures List.Tot.length vs = m)
+          (decreases m)
+  = if m = 0 then ()
+    else match c.dec s with
+         | None -> ()
+         | Some (v, r1) -> (match count_dec_v c (m - 1) r1 with
+                            | None -> ()
+                            | Some (tl, r2) -> lemma_count_dec_v_len c (m - 1) r1 tl r2)
+
+(** [count_dec_v] unrolls one step on a decomposed input. *)
+let count_dec_v_unroll (#a: eqtype) (c: codec_v2 a) (m: nat) (vs: list a) (v: a) (tl: list a)
+  (ev etl r: byte_seq)
+  : Lemma (requires m > 0 /\ List.Tot.length vs = m /\ vs == v :: tl /\
+                     c.dec (Seq.append ev (Seq.append etl r)) = Some (v, Seq.append etl r) /\
+                     count_dec_v c (m - 1) (Seq.append etl r) = Some (tl, r))
+          (ensures count_dec_v c m (Seq.append (Seq.append ev etl) r) = Some (v :: tl, r))
+  = Seq.append_assoc ev etl r
+
+let rec count_law_fwd_v (#a: eqtype) (c: codec_v2 a) (m: nat) (vs: list a)
+  (e_top: byte_seq) (r: byte_seq)
+  : Lemma (requires List.Tot.length vs = m /\ count_enc_v c vs = Some e_top)
+          (ensures count_dec_v c m (Seq.append e_top r) = Some (vs, r))
+          (decreases vs)
+  = match vs with
+    | [] -> Seq.append_empty_l r
+    | v :: tl ->
+      match c.enc v, count_enc_v c tl with
+      | Some ev, Some etl ->
+        c.law_fwd v ev (Seq.append etl r);
+        Seq.append_assoc ev etl r;
+        count_law_fwd_v c (m - 1) tl etl r;
+        count_dec_v_unroll c m vs v tl ev etl r
+      | _ -> ()
+
+let rec count_law_bwd_v (#a: eqtype) (c: codec_v2 a) (m: nat) (s: byte_seq) (vs: list a)
+  (r: remainder s)
+  : Lemma (requires count_dec_v c m s = Some (vs, r))
+          (ensures (exists (e: byte_seq). count_enc_m_v c m vs = Some e /\ s == Seq.append e r))
+          (decreases m)
+  = if m = 0 then begin
+      lemma_count_dec_v_len c 0 s vs r;
+      Seq.append_empty_l r;
+      Classical.exists_intro
+        (fun (e: byte_seq) -> count_enc_m_v c 0 vs = Some e /\ s == Seq.append e r)
+        Seq.empty
+    end
+    else match c.dec s with
+         | None -> ()
+         | Some (v, r1) ->
+           (match count_dec_v c (m - 1) r1 with
+            | None -> ()
+            | Some (tl, r) ->
+              lemma_count_dec_v_len c m s vs r;
+              c.law_bwd s v r1;
+              count_law_bwd_v c (m - 1) r1 tl r;
+              eliminate exists (e0: byte_seq). c.enc v = Some e0 /\ s == Seq.append e0 r1
+              with
+                eliminate exists (etl: byte_seq).
+                          count_enc_m_v c (m - 1) tl = Some etl /\ r1 == Seq.append etl r
+                with
+                  let w = Seq.append e0 etl in
+                  Seq.append_assoc e0 etl r;
+                  introduce exists (e: byte_seq).
+                            count_enc_m_v c m (v :: tl) = Some e /\ s == Seq.append e r
+                  with w and ())
+
+(** [count_all_wfcv] — every element's [wfcv] holds (used only by [count_v]'s
+    [wfcv] field, which the laws no longer consult). *)
+let rec count_all_wfcv (#a: eqtype) (c: codec_v2 a) (vs: list a) : Tot bool (decreases vs)
+  = match vs with | [] -> true | v :: tl -> c.wfcv v && count_all_wfcv c tl
+
+(** [count_v] — PAPER §6.1's `count n p`: exactly [m] elements of [c]. *)
+let count_v (#a: eqtype) (m: nat) (c: codec_v2 a) : codec_v2 (list a) = {
+  enc     = (fun vs -> count_enc_m_v c m vs);
+  dec     = (fun s -> count_dec_v c m s);
+  wfcv    = (fun vs -> List.Tot.length vs = m && count_all_wfcv c vs);
+  rest_cond   = (fun _ -> True);
+  rest_cond_v = (fun _ _ -> True);
+  law_fwd = (fun vs e r -> count_law_fwd_v c m vs e r);
+  law_bwd = (fun s vs r -> count_law_bwd_v c m s vs r);
 }

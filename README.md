@@ -401,23 +401,24 @@ downstream value type is `string`/`int`/`byte` records.
 Long names (`then_drop`) _and_ operator aliases (`*>`), per `CODE_GUIDELINES.md`;
 `Data.Codec` uses `include` **and** `open` so both reach consumers.
 
-**[S6] _(shipped)_ _128 lemmas, and every one anchored_ against deletion.**
-The count is **128**, and it takes **three** declaration forms — state all three
-or the number is wrong:
+**[S6] _(shipped)_ _139 lemmas, and every one anchored_ against deletion.**
+The count is **139**, and it takes **three** declaration forms — state all three
+or the number is wrong (recomputed 2026-11-21 when T4.2's combinators landed):
 
 | form | count | where |
 |---|---|---|
-| `let lemma_*` | 87 | `Types` 65, `Normal` 5, `Normal.Bytes` 13, `Text` 2, facade 2 |
-| `let rec lemma_*` | **32** | `Types` 31, `Normal.Bytes` 1 |
+| `let lemma_*` | **97** | `Types` 72, `Normal` 5, `Normal.Bytes` 12, `Text` 5, facade 2, `Pulse` 1 |
+| `let rec lemma_*` | **33** | `Types` 32, `Normal.Bytes` 1 |
 | `fn lemma_*` | 9 | `Data.Codec.Pulse` (the eight `lemma_pulse_roundtrip_*` and `lemma_pulse_encode_decode_match`) |
 
-So the two greps that look right both undercount: `grep -c '^let lemma_'` finds
-**62** (misses the recursive 31 *and* the Pulse 9), and adding `^fn lemma_` gets
-**71** (still misses the recursive 31). The only honest command is
+(A `let lemma_` in `Pulse` is a pure helper, distinct from the 9 Pulse `fn`s.)
+So a single grep undercounts: `grep -c '^let lemma_'` finds **97** (misses the
+recursive 33 *and* the 9 `fn`), and adding `^fn lemma_` gets **106** (still
+misses the recursive 33). The only honest command is
 
 ```bash
 grep -rhoE '^(let|let rec|fn) lemma_[A-Za-z0-9_]+' src/*.fst \
-  | sed -E 's/^(let rec|let|fn) //' | sort -u | wc -l     # => 128
+  | sed -E 's/^(let rec|let|fn) //' | sort -u | wc -l     # => 139
 ```
 
 Re-run it rather than trusting this number. This paragraph exists **because
@@ -1144,20 +1145,21 @@ which was the open one:
 
   | Module | Role | Extracts to |
   |---|---|---|
-  | `Data.Codec.Types` | the record `codec a`, all combinators on bytes, 91 lemmas | OCaml only (pure spec) |
+  | `Data.Codec.Types` | the record `codec a`, all combinators on bytes, 104 lemmas | OCaml only (pure spec) |
   | `Data.Codec.Text` | `text : string -> codec string`, UTF-8/ASCII bridge | OCaml only |
   | `Data.Codec` | facade: re-exports, long-name aliases, operators | OCaml only |
   | `Data.Codec.Pulse` | 8-leaf `codec_t`, the `fn`s and their roundtrip lemmas | **C, OCaml, F#** |
 
-  The 91 above is `Types` alone; the **128** below is the whole library — the
-  two are different counts, not a contradiction.  `Types` has 91 (60
-  `let lemma_*` + 31 `let rec lemma_*`); the remaining 14 are 2 in `Text`, 2
-  in the facade, and 9 Pulse `fn lemma_*`.
+  The 104 above is `Types` alone; the **139** below is the whole library — the
+  two are different counts, not a contradiction.  `Types` has 104 (72
+  `let lemma_*` + 32 `let rec lemma_*`); the remaining 35 are 5 in `Text`,
+  5 in `Normal`, 13 in `Normal.Bytes` (12 `let`+1 rec), 2 in the facade,
+  10 in `Pulse` (1 `let`+9 `fn`).
 
-  **128 lemmas, 0 admits** — 87 `let lemma_*` + 32 `let rec lemma_*` + 9
+  **139 lemmas, 0 admits** — 97 `let lemma_*` + 33 `let rec lemma_*` + 9
   `fn lemma_*` (there is no single grep that finds all three; the counting
   command is in `[S6]`). No `admit`, no `assume val` anywhere in
-  `src/`; `make check` verifies **7 modules**. The 121 pure roundtrip/error-path
+  `src/`; `make check` verifies **11 modules**. The 121 pure roundtrip/error-path
   tests and 10 Pulse buffer tests are listed below.
 
   **The 26 combinators.** Primitives (`token`, `byte_val`, `satisfy`, `pure`,

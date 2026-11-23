@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`codec_v2`'s laws are now UNCONDITIONAL — the paper's `Iso` (F94).**
+  `law_fwd` is `requires enc x = Some e` and nothing else; `wfcv` and
+  `rest_cond_v` are no longer law hypotheses (they remain fields for the C
+  tier).  This matches `PAPER.md` §3.1, whose `Iso` law carries no side
+  condition; `wfcv`/`rest_cond` are extraction artefacts (README `[D9]`,
+  `[W1]`).  The five shipped instances were migrated.  Two needed their value
+  guard moved **into `enc`** (the domain is now exactly `enc`'s image):
+  `satisfy_v.enc v = if f v then Some (create 1 v) else None`, and
+  `pure_v.enc v = if v = x then Some [] else None` (the old constant form made
+  the law false).  `make check` green (11 modules), 0 admits.
+
 ### Added
+
+- **Structural combinators on `codec_v2` (T4.2).**  `product_v`, `sum_v`,
+  `map_v` (the paper's IsoFunctor `$`, taking an `iso a b` — no retract side
+  condition, closing `[W5]`), `count_v`, and `label_v`, all in
+  `Data.Codec.Types` with both laws.  Transcribed from 0-admit spikes on the
+  shipped record (`spike-f94-paper-iso.fst`, `spike-sum.fst`,
+  `spike-f95-t42.fst`).  `count_v` carries its "exactly m elements" guard in
+  `enc`'s image, as F94's rule requires.  `make check` green (11 modules),
+  0 admits; the two deleted-hypothesis deletion tests are gated in the change's
+  spike suite.
 
 - **`codec_v2` instances begin to land in `src/` (T4.0b, T4.1).**  The strict
   type had no inhabitant in the shipping build, so a defect in the *type* would
