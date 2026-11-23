@@ -432,11 +432,18 @@ and the four `let rec` lemmas below, which the `^let` sweep could not see).
 The 9 Pulse `fn` lemmas are covered by `Data.Codec.Test.Pulse` rather than the
 anchor module, since a Pulse `fn` cannot be anchored from a pure module.
 
-**[S7] (`codec_v2` target) Direction-split predicates: `rest_cond_v` for `law_fwd` only.**
-`codec_v2` gives `law_fwd` a value-indexed `rest_cond_v` (it holds the value) and
-`law_bwd` nothing (the value is what it recovers). A single shared predicate is
-_circular_; splitting dissolves it, and it is what lets `sep_by1`'s forward law
-thread as conjunction elimination instead of an unprovable prefix-closure step.
+**[S7] (`codec_v2`, shipped) The laws carry no side condition — `rest_cond_v` left `law_fwd`.**
+Superseded by the F94 spike (`codec-strict-isomorphism`): `law_fwd` is now
+`requires enc x = Some e` only, matching PAPER §3.1's unconditional `Iso` law.
+The earlier Amendment-6 direction-split (`rest_cond_v` value-indexed in
+`law_fwd`, `law_bwd` unguarded) was the mechanism that let a *composite* spend a
+value-indexed guard; F94 showed the guard is not needed once `map_` takes a
+paper `Iso` (whose retract is the `Iso`'s own law) and `enc` carries the value
+guard where a leaf needs one (`satisfy`, `pure`). `wfcv` and `rest_cond_v` stay
+**fields** for the C tier (`[D9]`) but are no longer law hypotheses. Measured 0
+admit for `product`, `map_iso`, `bytes` and the leaves under this law
+(`research.md` F94), and `make check` is green with the five shipped instances
+migrated.
 
 **[S8] (`codec_v2` target) Readers are _canonical by construction_, not by a side condition.**
 `[D13]` makes `dec` accept exactly `enc`'s image, so the backward law becomes
@@ -461,6 +468,17 @@ single-answer decoder — but a real reason makes a trade honest; it does not ma
 the result a strengthening.
 
 **[W1] The inverse law is _conditional_, and redundant in one place.**
+
+> **UPDATE (2026-11-21, `codec-strict-isomorphism` F94) — `codec_v2`'s law is now
+> UNCONDITIONAL.**  `law_fwd` is `requires enc x = Some e` and nothing else
+> (`[S7]`), so `codec_v2` is a paper-faithful `Iso`.  This entry remains the
+> record of the **legacy** `[codec]` record's conditional `roundtrip` (which the
+> legacy combinators still carry until Phase 5 collapses the two records), and
+> of the reason the condition existed: `wfcv` is the C caller's runtime `bool`
+> and `rest_cond` a reader's stopping condition, not law hypotheses.  Where a
+> leaf needs a value guard (`satisfy`, `pure`) it is folded into `enc`'s image,
+> not into the law's hypotheses.
+
 "Invertible" becomes a property of the description _on a domain the caller
 supplies_. Of the three hypotheses only `wfcv_prop` is _purely_ a cost — it exists
 solely to mirror `wfcv`; `wfcv` drives a real runtime check and `rest_cond` a real
@@ -520,6 +538,17 @@ This obligation is **not in `src/`**: the legacy `map_` has a one-way
 `roundtrip` and no backward law at all, so it needs no retract hypothesis. The
 obligation appears only when `map_` is restated against `codec_v2`, which the
 spike suite does and `src/` has not.
+
+> **CLOSED (2026-11-21, F94) — `map_` as the paper's `$` needs NO retract
+> obligation.**  PAPER §3.1's `$` is the **IsoFunctor** action: it applies a
+> partial *isomorphism* `Iso α β` whose `f` and `g` are mutually inverse.  The
+> legacy `map_` instead takes *arbitrary* `f`/`g` plus this retract hypothesis,
+> and that arbitrary pair is exactly what made the obligation unprovable.  On
+> the migrated `codec_v2`, `map_` takes an `iso a b` carrying `iso_fg`/`iso_gf`
+> (the inverse law as a parameter, per `fstar-proofs` §92), and both laws verify
+> with no hypothesis beyond `enc`'s image — measured 0 admit
+> (`spike-f94-paper-iso.fst`), deletion-tested (`...-neg.fst`).  This is the
+> `[W5]` "no retract obligation" target *met by construction*.
 
 **[W6] The C execution path covers _8 leaves_, not the library — an open gap,
 not a boundary.**

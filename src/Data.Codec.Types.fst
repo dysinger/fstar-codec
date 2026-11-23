@@ -4305,16 +4305,16 @@ let remainder (s: byte_seq) = r:byte_seq{ Seq.length r <= Seq.length s }
        fail; neither is total.  This is why the record is a *partial*
        isomorphism rather than a bijection.
 
-    2. **Two side conditions, split BY DIRECTION.**  This is the crux
-       (`research.md` F25).  A single value-indexed predicate used by both
-       laws is circular (it was Design B″: [law_bwd] would need the encoding
-       of the value it is still recovering).  A single value-free predicate is
-       Amendment 5 and cannot discharge [sep_by1]'s forward law.  So:
-         - [rest_cond_v] is value-indexed and is consumed by [law_fwd] ONLY —
-           the forward direction has the value in hand.
-         - [rest_cond] is value-free and is what [law_bwd] would use; today
-           [law_bwd] needs no side condition at all, and really does not
-           mention [rest_cond_v].
+    2. **The laws carry NO side condition (F94).**  Both [law_fwd] and
+       [law_bwd] are stated on [enc]'s image / [dec]'s result alone, which is
+       the paper's own shape (PAPER §3.1: no hypothesis on the `Iso` law).
+       [wfcv] and [rest_cond_v] remain FIELDS — [wfcv] is the C caller's
+       runtime [bool] and [rest_cond] a reader's stopping condition (README
+       `[D9]`, `[W1]`) — but they are extraction concerns, not law hypotheses,
+       so the pure laws no longer mention them (`research.md` F94).  A value
+       that a law must pin is supplied to the *combinator* as a parameter
+       (e.g. `map_` takes an `iso`, not arbitrary `f`/`g`), per F94 /
+       `fstar-proofs` §92.
 
     3. **[remainder]-returning [dec].**  A prefix codec must report HOW MUCH it
        consumed; returning a bare value cannot express that, and Design A
@@ -4363,10 +4363,16 @@ type codec_v2 (a: eqtype) = {
   rest_cond_v : a -> byte_seq -> Tot prop;
 
   (** FORWARD: encode then decode recovers the value, and the trailing
-      suffix is returned untouched.  Consumes the value-indexed side
-      condition because it has the value. *)
+      suffix is returned untouched.  **The domain is exactly [enc]'s image
+      — by type, no side condition.**  This is the paper's own law
+      (PAPER §3.1: `Iso α β = Iso (α -> Maybe β) (β -> Maybe α)`, with no
+      hypothesis); [wfcv] and [rest_cond_v] are extraction artefacts
+      (README `[D9]`, `[W1]`) and are no longer consumed here.  `research.md`
+      F94 measured the whole stack (product, map_iso, bytes, leaves) under
+      this law, 0 admit, with a deletion test proving the witnesses are
+      load-bearing. *)
   law_fwd : (x: a) -> (e: byte_seq) -> (r: byte_seq) -> Lemma
-    (requires wfcv x = true /\ enc x = Some e /\ rest_cond_v x r)
+    (requires enc x = Some e)
     (ensures dec (Seq.append e r) = Some (x, r));
 
   (** BACKWARD: whatever the decoder consumed IS the encoding of the value it
@@ -4449,11 +4455,14 @@ let byte_val_v (b: byte) : codec_v2 unit = {
 
 (** [satisfy_v] — M3 leaf: a byte matching a predicate (T4.1).
 
-    [wfcv] carries the predicate itself, which is the live condition: the
-    caller must know the value is in the predicate's domain for [enc] to be
-    meaningful.  Fixed width, so [rest_cond_v] is [True]. *)
+    The predicate guards [enc], not the law: on the minimal ABI the domain is
+    exactly [enc]'s image, and the paper's §5.1 `subset p` is
+    `f x | p x = Just x | otherwise = Nothing` — partial in BOTH directions.
+    So [enc v] is `Some` only when `f v` holds; then `dec` re-checks `f` on the
+    very byte `enc` produced, and the law closes with no side condition.
+    Fixed width, so [rest_cond_v] is [True]. *)
 let satisfy_v (f: byte -> Tot bool) : codec_v2 byte = {
-  enc         = (fun v -> Some (Seq.create 1 v));
+  enc         = (fun v -> if f v then Some (Seq.create 1 v) else None);
   dec         = (fun s -> if Seq.length s >= 1
                           then (let b = Seq.index s 0 in
                                 if f b
@@ -4476,12 +4485,16 @@ let satisfy_v (f: byte -> Tot bool) : codec_v2 byte = {
 
 (** [pure_v] — M3 leaf: the constant codec (T4.1).
 
-    The one leaf whose [wfcv] carries information: [wfcv v := (v == x)], the
-    fold F37 settled on after three candidates.  Without it [law_fwd] is
-    **false** — the decoder returns [x] regardless of input, so the law could
-    only hold for [v = x].  Consumes no bytes, so [law_bwd] is `[] ++ r = r`. *)
+    The value guard is folded into [enc], not the law.  On the minimal ABI
+    [law_fwd] is `requires enc x = Some e`; a constant `enc _ = Some []` would
+    make it **false** (the decoder returns the captured [x] regardless of the
+    value [v] `enc` was applied to), which `codec-strict-isomorphism` F94
+    measures (`f93-pure-minabi.fst`).  The guarded [enc]
+    `if v = x then Some [] else None` supplies `v = x` from the hypothesis, so
+    `dec ([] ++ r) = Some (x, r) = Some (v, r)`.  [wfcv] keeps the same
+    predicate for the C tier.  Consumes no bytes, so [law_bwd] is `[] ++ r = r`. *)
 let pure_v (#a: eqtype) (x: a) : codec_v2 a = {
-  enc         = (fun _ -> Some Seq.empty);
+  enc         = (fun (v: a) -> if v = x then Some Seq.empty else None);
   dec         = (fun s -> Some (x, s));
   wfcv        = (fun v -> v = x);
   rest_cond   = (fun _ -> True);
