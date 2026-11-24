@@ -4328,9 +4328,10 @@ let remainder (s: byte_seq) = r:byte_seq{ Seq.length r <= Seq.length s }
     ⚠ Migration status (2026-11-21, `codec-strict-isomorphism` F94/F95):
     the minimal ABI is LANDED and the structural combinators are IN `src/`.
     Instances present at this record: the five leaves `token_v`, `byte_val_v`,
-    `satisfy_v`, `pure_v`, `text_v`, and the five combinators `product_v`,
+    `satisfy_v`, `pure_v`, `text_v`, the five combinators `product_v`,
     `sum_v`, `map_v` (the paper's IsoFunctor `$`, takes an `iso`), `count_v`,
-    `label_v`.  Each is transcribed from a 0-admit spike on THIS record
+    `label_v`, and `bytes_v` (the paper's §6.1 `text` over bytes, T4.12).
+    Each is transcribed from a 0-admit spike on THIS record
     (`spike-f94-paper-iso.fst`, `spike-sum.fst`, `spike-f95-t42.fst`).  A leaf
     whose value guard matters (`satisfy`, `pure`, `count`) carries it in
     `enc`'s image, not in the laws — that is F94's rule and why the laws need
@@ -4339,8 +4340,7 @@ let remainder (s: byte_seq) = r:byte_seq{ Seq.length r <= Seq.length s }
     Not yet ported to this record (future tasks):
       - `alt` (T4.3), `satisfy_many0/1`/`one_of` (T4.4), `take_until` (T4.5),
         `sep_by1*` (T4.6), `opt_prefixed` (T4.7), the binary leaves
-        (`uint8`, `word16*/word32*`, `varint`, `digits_to_int`, T4.8),
-        `bytes` (T4.12).
+        (`uint8`, `word16*/word32*`, `varint`, `digits_to_int`, T4.8).
       - `varint`/`digits_to_int`'s backward law is TRUE only over the
         CANONICAL readers (`VarintNonCanonical.fst`; `probe-f41`/`probe-f42`);
         the legacy decoders accept overlong LEB128 / non-padded forms.
@@ -4392,6 +4392,13 @@ let lemma_split_head (s: byte_seq) : Lemma
 
 
 (* ── The first [codec_v2] instance: M3 opens here (T4.0b, F90) ──────── *)
+
+(** [unit_pair] — collapse the nested pair [product_v] produces for a
+    right-nested run of leaves.  A pure helper, not a proof: [bytes_v]'s
+    value type is [unit], so the pair is discarded (§6.1 `text`).
+
+    @returns The unit value, whatever the pair. *)
+let unit_pair_v (_: unit & unit) : Tot unit = ()
 
 
 (** [token_v] — the first inhabitant of [codec_v2] in [src/].
@@ -4884,3 +4891,59 @@ let count_v (#a: eqtype) (m: nat) (c: codec_v2 a) : codec_v2 (list a) = {
   law_fwd = (fun vs e r -> count_law_fwd_v c m vs e r);
   law_bwd = (fun s vs r -> count_law_bwd_v c m s vs r);
 }
+
+
+(* ── bytes (PAPER §6.1 `text` / §3.4 `many'`, on bytes) — T4.12, Route 4 ── *)
+
+(** [bytes_v] — a fixed list of bytes, as a [codec_v2 unit].
+
+    **Route 4, the paper's own construction** (`PAPER.md` §6.1: `text` is a
+    `many'` over the byte alphabet).  Nil is [pure_v ()]; a cons is
+    `product (byte_val b) (bytes_v tl)` read through the constant collapse
+    [unit_pair_v]:
+
+      bytes_v []      = pure ()
+      bytes_v (b::tl) = product_v (byte_val b) (bytes_v tl) |> ((_,_),()) -> ()
+
+    It is *transcription*, not proof work: the composite's [enc]/[dec] are the
+    product's, the value being [()] on both sides, so both laws are
+    `product_v`'s applied at the pair `((), ())` — the same values its own
+    fields produce ([unit] has one inhabitant).  `research.md` F94 measured
+    this 0 admit on the minimal ABI (`spike-f94-paper-iso.fst`); F95 landed
+    [product_v] in this module, which is what it rests on.
+
+    **Why not routes 1 and 2** (T4.12's original options, and F91's
+    suggested `seq_of_list_v`): both are ⛔ *measured* dead.  Route 1 needs
+    `seq_of_list_v l == Seq.seq_of_list l` provable from outside
+    `FStar.Seq.Base`, which it is not
+    (`spike-bytes-v2-route1-bridge.fst`) — the "one equality lemma" would be
+    an [assume]; Route 2 ⛔ (`spike-bytes-v2-route2.fst`).  Route 4 needs
+    neither: it never mentions [seq_of_list].
+
+    [wfcv] is [true] — every byte is encodable and a list's encoding is
+    fixed-width.  [rest_cond_v] is [True] for the same reason; the laws no
+    longer consume either (F94).
+
+    Decreases on [bs]: each step hands a strictly shorter list to
+    [bytes_v].
+
+    @param bs The bytes this codec is the identity on ([enc] on [()] emits
+      exactly these).
+    @returns A [codec_v2 unit] whose decoder consumes exactly [List.Tot.length
+      bs] bytes. *)
+let rec bytes_v (bs: list byte) : Tot (codec_v2 unit) (decreases bs) =
+  match bs with
+  | [] -> pure_v ()
+  | b :: tl ->
+    (let p = product_v (byte_val_v b) (bytes_v tl) in
+     {
+       enc         = (fun (_: unit) -> p.enc ((), ()));
+       dec         = (fun s -> match p.dec s with
+                               | None -> None
+                               | Some ((u1, u2), r) -> Some (unit_pair_v (u1, u2), r));
+       wfcv        = (fun (_: unit) -> true);
+       rest_cond   = (fun _ -> True);
+       rest_cond_v = (fun _ _ -> True);
+       law_fwd     = (fun (_: unit) e r -> p.law_fwd ((), ()) e r);
+       law_bwd     = (fun s (_: unit) r -> p.law_bwd s ((), ()) r);
+     })
