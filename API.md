@@ -511,6 +511,75 @@ Alias: [many1].
 
 ---
 
+# `codec_v2` — the strict partial isomorphism
+
+The migration target (`[S7]`): `law_fwd` is `requires enc x = Some e` only and
+`law_bwd` is `requires dec s = Some (v, r)` only — **no law carries a side
+condition**. `wfcv` / `rest_cond` / `rest_cond_v` remain fields for the C tier
+(`[D9]`) but are no longer law hypotheses.
+
+## Instances in `Data.Codec.Types` (all 0-admit, both laws)
+
+| codec | value type | note |
+|---|---|---|
+| `token_v` | `byte` | one byte (F90) |
+| `byte_val_v b` | `unit` | a fixed byte |
+| `satisfy_v f` | `byte` | guard lives in `enc` (F94) |
+| `pure_v x` | `a` | guard lives in `enc` (F94) |
+| `product_v c1 c2` | `a & b` | F95 |
+| `sum_v c1 c2` | `either a b` | tagged `0x00`/`0x01` (F95) |
+| `map_v i c` | `b` | the paper's IsoFunctor `$`, takes an `iso` (F94) |
+| `count_v m c` | `list a` | "exactly `m`" guard in `enc` (F95) |
+| `label_v c` | `a` | identity |
+| `bytes_v bs` | `unit` | Route 4: `product_v` over bytes (F96) |
+| `text_v` | `list byte` | `Data.Codec.Text` |
+
+## T4.2b — the six structural facets (F98, F101)
+
+Each is transcribed from its spike. `F95` expected all six to be "one
+`map_v`-with-`iso` step"; F98 measured that this holds for **one**.
+
+| facet | signature | what it is |
+|---|---|---|
+| `take_v n` | `nat -> codec_v2 (list byte)` | a **definition** (`count_v n token_v`); no obligation |
+| `then_drop_v c1 c2` | `codec_v2 unit -> codec_v2 a -> codec_v2 a` | a **lens** over `product_v`'s first component |
+| `drop_then_v c1 c2` | `codec_v2 a -> codec_v2 unit -> codec_v2 a` | the mirror lens (second component) |
+| `between_v open close c` | two `unit` codecs + `c` | `drop_then_v (then_drop_v open c) close`; two instances, no proof |
+| `optional_v c` | `codec_v2 a -> codec_v2 (option a)` | **the** `map_v`-with-`iso` step (`either a unit ≅ option a`) |
+| `choice_v c1 c2 pf` | `(squash (disjoint_all_v c1 c2)) -> codec_v2 a` | first-success, `c1` dominates; **disjointness is a parameter** |
+
+### `choice_v` — disjointness as a `squash` parameter (F101)
+
+```fstar
+let disjoint_v (#a: eqtype) (c1 c2: codec_v2 a) (x: a) : Tot prop
+  = ~(Some? (c1.enc x) /\ Some? (c2.enc x))
+let disjoint_all_v (#a: eqtype) (c1 c2: codec_v2 a) : Tot prop
+  = forall (y: a). disjoint_v c1 c2 y
+let choice_v (#a: eqtype) (c1 c2: codec_v2 a)
+             (pf: squash (disjoint_all_v c1 c2)) : codec_v2 a
+```
+
+`disjoint_all_v` arrives as a `squash` parameter, so **no law carries a side
+condition** and `REQ-ISO-COMPOSES` is met, not bent. The `squash` is not
+cosmetic: **a `prop` that NAMES a fact is opaque to SMT when it arrives as a
+hypothesis**, and a `squash` is what makes it usable (F101, six probes).
+
+> **Cost, recorded:** every caller of `choice_v` owes a `disjoint_all_v` proof.
+> Trivial for disjoint pairs (`satisfy_v p` vs `token_v`); impossible for
+> overlapping ones, which need a different combinator. Do not assume it away.
+
+**Why not F98's `choice_ok`:** `choice_ok c1 c2 = forall x. Some? (c1.enc x)
+\/ ~(Some? (c2.enc x))` is *disjunctive* — the left disjunct alone makes it
+true, so it holds when **both** arms encode the same value, which is exactly
+the case `choice` cannot resolve. The proof then needed an "absurdity" that is
+false (model: `c1 = c2 = fun _ -> Some []`), so it never closed at any rlimit.
+
+**Deletion test:** removing `disjoint_all_v` from `choice_v`'s types (replacing
+it with `squash True`) **fails** verification — the witness is load-bearing,
+not a no-op (`research.md` F101; the same test F94 ran on `iso_gf`).
+
+---
+
 # Data.Codec.Text
 
 Data.Codec.Text — ASCII text codecs and character predicates.

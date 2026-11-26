@@ -401,24 +401,24 @@ downstream value type is `string`/`int`/`byte` records.
 Long names (`then_drop`) _and_ operator aliases (`*>`), per `CODE_GUIDELINES.md`;
 `Data.Codec` uses `include` **and** `open` so both reach consumers.
 
-**[S6] _(shipped)_ _139 lemmas, and every one anchored_ against deletion.**
-The count is **139**, and it takes **three** declaration forms — state all three
-or the number is wrong (recomputed 2026-11-21 when T4.2's combinators landed):
+**[S6] _(shipped)_ _142 lemmas, and every one anchored_ against deletion.**
+The count is **142**, and it takes **three** declaration forms — state all three
+or the number is wrong (recomputed 2026-11-21 when T4.2b's six facets landed):
 
 | form | count | where |
 |---|---|---|
-| `let lemma_*` | **97** | `Types` 72, `Normal` 5, `Normal.Bytes` 12, `Text` 5, facade 2, `Pulse` 1 |
+| `let lemma_*` | **100** | `Types` 75, `Normal` 5, `Normal.Bytes` 12, `Text` 5, facade 2, `Pulse` 1 |
 | `let rec lemma_*` | **33** | `Types` 32, `Normal.Bytes` 1 |
 | `fn lemma_*` | 9 | `Data.Codec.Pulse` (the eight `lemma_pulse_roundtrip_*` and `lemma_pulse_encode_decode_match`) |
 
 (A `let lemma_` in `Pulse` is a pure helper, distinct from the 9 Pulse `fn`s.)
-So a single grep undercounts: `grep -c '^let lemma_'` finds **97** (misses the
-recursive 33 *and* the 9 `fn`), and adding `^fn lemma_` gets **106** (still
+So a single grep undercounts: `grep -c '^let lemma_'` finds **100** (misses the
+recursive 33 *and* the 9 `fn`), and adding `^fn lemma_` gets **109** (still
 misses the recursive 33). The only honest command is
 
 ```bash
 grep -rhoE '^(let|let rec|fn) lemma_[A-Za-z0-9_]+' src/*.fst \
-  | sed -E 's/^(let rec|let|fn) //' | sort -u | wc -l     # => 139
+  | sed -E 's/^(let rec|let|fn) //' | sort -u | wc -l     # => 142
 ```
 
 Re-run it rather than trusting this number. This paragraph exists **because
@@ -426,12 +426,22 @@ this document got it wrong twice** (76, then 71 — each a plausible number that
 plausible grep produced); see `[W7]`. Note also that F\* comments nest, so a
 naive `\(\*.*?\*\)` stripper closes at an inner `*)`.
 
-Anchoring is **complete**: all 128 are referenced by `Data.Codec.Test.
-Integration`, so deleting any of them fails the build. Before `codec-audit-fixes`
-that was false in three separate ways (nine unanchored, five of them dead code;
-and the four `let rec` lemmas below, which the `^let` sweep could not see).
+Anchoring is **complete for the legacy `codec` tier**: all of its lemmas are
+referenced by `Data.Codec.Test.Integration`, so deleting any of them fails the
+build. Before `codec-audit-fixes` that was false in three separate ways (nine
+unanchored, five of them dead code; and the four `let rec` lemmas below, which
+the `^let` sweep could not see).
 The 9 Pulse `fn` lemmas are covered by `Data.Codec.Test.Pulse` rather than the
 anchor module, since a Pulse `fn` cannot be anchored from a pure module.
+
+**Known gap, stated rather than hidden:** the `codec_v2` tier (F94–F101) is
+**not** anchored — `lemma_product_v_witness`, `lemma_map_v_witness`,
+`lemma_count_dec_v_len`, `count_dec_v_unroll` and T4.2b's `lemma_opt_either_fg`,
+`lemma_either_opt_gf`, `lemma_choice_auto_01_v` are `0` references in the anchor
+module. They are reachable only through the record fields a `codec_v2` instance
+exposes, so anchoring them means writing `codec_v2` instances into the anchor
+module, which the tier's migration (`[S7]`, T5.x) has not reached yet. Do not
+read "every one anchored" as covering them until this sentence is deleted.
 
 **[S7] (`codec_v2`, shipped) The laws carry no side condition — `rest_cond_v` left `law_fwd`.**
 Superseded by the F94 spike (`codec-strict-isomorphism`): `law_fwd` is now

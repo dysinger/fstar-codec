@@ -22,6 +22,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The six structural facets on `codec_v2` (T4.2b).**  `take_v`, `then_drop_v`,
+  `drop_then_v`, `between_v`, `optional_v` and `choice_v`, in
+  `Data.Codec.Types` with both laws, transcribed from 0-admit spikes
+  (`spike-f98-facets.fst`, `spike-f98-optional.fst`,
+  `spike-f100-choice-shape.fst`).  F95 expected all six to be "one
+  `map_v`-with-`iso` step"; F98 measured that this holds for exactly **one**
+  (`optional`, whose `either a unit ≅ option a` collapse is a bijection).
+  `take_v` is a definition over `count_v`/`token_v`; `then_drop_v` and
+  `drop_then_v` are lenses over `product_v`'s components; `between_v` is two of
+  those composed.  **`choice_v` takes `squash (disjoint_all_v c1 c2)` as a
+  parameter**, so no law carries a side condition — F98's `choice_ok` was
+  disjunctive and therefore satisfied when both arms encode, which is the one
+  case `choice` cannot resolve.  Replacing the parameter with `squash True`
+  fails verification, so the witness is load-bearing.  `make check` green
+  (11 modules), 0 admits; spike suite exit 0, 14 refutations.
+
 - **Structural combinators on `codec_v2` (T4.2).**  `product_v`, `sum_v`,
   `map_v` (the paper's IsoFunctor `$`, taking an `iso a b` — no retract side
   condition, closing `[W5]`), `count_v`, and `label_v`, all in
@@ -56,6 +72,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   group-zero guard costs **+12%** on a 2-byte varint decode (~0.25 ns).
 
 ### Fixed
+
+- **`README.md` `[S6]`: the lemma count was stale and the anchoring claim was
+  false for `codec_v2`.**  The count is now 142 (`100 let + 33 let rec + 9 fn`),
+  recomputed rather than incremented.  "Every lemma anchored against deletion"
+  was true for the legacy `codec` tier and false for the whole `codec_v2` tier
+  (F94–F102's witnesses are `0` references in the anchor module); `[S6]` now
+  says so and names the gap instead of implying coverage it does not have.
 
 - **`README.md` `[W1]`, `[D2]` and `[O1]`: three wrong reasons, same decisions
   (T3.6/T3.7, `codec-strict-isomorphism` F89).**  `[W1]`'s ledger row said an

@@ -15,9 +15,11 @@ returning codec records — no GADT, no n, no mutual recursion.
 - [codec a] — the legacy 8-field record: enc, dec, wfcv, wfcv_prop,
   rest_cond, roundtrip, dec_err_bound, dec_consumed_bound
 - [codec_v2 a] — the strict partial isomorphism (Amendment 6): enc, dec,
-  wfcv, rest_cond, rest_cond_v, law_fwd, law_bwd.  Coexistence only; no
-  combinator uses it yet.  ⚠ `_v2` is a TEMPORARY name — Phase 5 deletes the
-  legacy [codec] and renames this one to [codec].  See the record's doc.
+  wfcv, rest_cond, rest_cond_v, law_fwd, law_bwd.  Coexistence only: the
+  legacy [codec] has not been deleted, but **eleven [codec_v2] instances now
+  ship** (see `@section codec_v2` below; F94–F101).  ⚠ `_v2` is a TEMPORARY
+  name — Phase 5 deletes the legacy [codec] and renames this one to [codec].
+  See the record's doc.
 - [error_code] — sum type of parse errors
 - [decode_error] — error record with position and optional label
 - [decode_result a] — either an error or a value + bytes consumed
@@ -29,6 +31,13 @@ Combinator: custom, product, sum, map_, count, label, alt,
             satisfy_many0, satisfy_many1, take_until, sep_by1,
             sep_by1_trailing, sep_by1_opt_trailing, opt_prefixed
 Helpers (not codecs): one_of (returns an ad-hoc triple)
+
+@section codec_v2
+Strict instances (minimal ABI, no side condition on any law):
+  token_v, byte_val_v, satisfy_v, pure_v, product_v, sum_v, map_v,
+  count_v, label_v, bytes_v  (and text_v in [Data.Codec.Text])
+T4.2b facets (F98, F101): take_v, then_drop_v, drop_then_v, between_v,
+  optional_v, choice_v  (choice_v takes `squash (disjoint_all_v c1 c2)`)
 
 ⚠️ `text`, `bytes` and the ASCII predicates live in [Data.Codec.Text]
 (module split, `fstar-codec` 0fdade0).  This module must NOT depend on it.
@@ -4947,3 +4956,351 @@ let rec bytes_v (bs: list byte) : Tot (codec_v2 unit) (decreases bs) =
        law_fwd     = (fun (_: unit) e r -> p.law_fwd ((), ()) e r);
        law_bwd     = (fun s (_: unit) r -> p.law_bwd s ((), ()) r);
      })
+
+
+(* ── T4.2b: the six STRUCTURAL FACETS (F98, F101) ─────────────────────────
+   `between` / `then_drop` / `drop_then` / `optional` / `take` / `choice`.
+
+   F95 expected all six to be "one `map_v`-with-`iso` step"; F98 measured that
+   this holds for exactly ONE (`optional`).  Two are DEFINITIONS or lenses over
+   `product_v`'s components, one is a composition of two of those, one is a
+   plain definition, and one needed a design decision (F101).  Each is
+   transcribed from its spike, not derived. *)
+
+
+(* ══ 1. `take` — a DEFINITION (`count n token`), no obligation ══════════ *)
+
+(** [take_v] — PAPER §6.1's `take n`: a fixed [n]-byte prefix, as a
+    [list byte].  This is a *definition* over the shipped [count_v]/[token_v],
+    not a derivation, so it carries no proof obligation of its own (F98).  It
+    is the one facet where F95's uniform "one `map_v`-with-`iso` step"
+    expectation is simply inapplicable — there is no iso to apply.
+
+    @param n The exact number of bytes consumed.
+    @returns A [codec_v2 (list byte)] that reads exactly [n] bytes. *)
+let take_v (n: nat) : codec_v2 (list byte) = count_v n token_v
+
+
+(* ══ 2. `then_drop` / 3. `drop_then` — LENSES over product_v ════════════ *)
+
+(** [then_drop_v] — run [c1] then [c2], dropping [c1]'s [unit] value.
+
+    **A lens, not a `map_v`-with-`iso` step** (F98, measured).  The
+    `iso (unit & a) a` route is available, but its laws would then have to be
+    pushed through [product_v]'s `law_fwd` on a pair whose first component is
+    [()], which is longer and no more general.  Projecting the components
+    directly is both shorter and closes in one step, so that is the shape
+    shipped here — the same relationship the legacy [then_drop] had to
+    [product], one level down.
+
+    [wfcv]/[rest_cond_v] are the components': the sequencing consumes nothing
+    itself, so [rest_cond] stays [True].
+
+    @param c1 The first codec; its value (a [unit]) is discarded.
+    @param c2 The second codec; its value is the result.
+    @returns A [codec_v2 a] that runs [c1] then [c2]. *)
+let then_drop_v (#a: eqtype) (c1: codec_v2 unit) (c2: codec_v2 a) : codec_v2 a = {
+  enc     = (fun (v: a) -> product_enc_v c1 c2 ((), v));
+  dec     = (fun s -> match product_dec_v c1 c2 s with
+                      | None -> None
+                      | Some (((), v), r) -> Some (v, r));
+  wfcv    = (fun v -> c1.wfcv () && c2.wfcv v);
+  rest_cond   = (fun _ -> True);
+  rest_cond_v = (fun (v: a) r -> c1.rest_cond_v () (Seq.append (encf_v c1 ()) r) \/
+                                 c2.rest_cond_v v r);
+  law_fwd = (fun (v: a) e r ->
+    match c1.enc (), c2.enc v with
+    | Some e1, Some e2 ->
+      c1.law_fwd () e1 (Seq.append e2 r);
+      c2.law_fwd v e2 r;
+      Seq.append_assoc e1 e2 r
+    | _ -> ());
+  law_bwd = (fun s (v: a) r ->
+    match c1.dec s with
+    | None -> ()
+    | Some ((), r1) ->
+      c1.law_bwd s () r1;
+      (match c2.dec r1 with
+       | None -> ()
+       | Some (v', r') ->
+         c2.law_bwd r1 v' r';
+         (match c1.enc (), c2.enc v' with
+          | Some e1, Some e2 -> Seq.append_assoc e1 e2 r
+          | _ -> ())));
+}
+
+(** [drop_then_v] — run [c1] then [c2], dropping [c2]'s [unit] value.
+
+    The mirror image of [then_drop_v]: a lens over [product_v]'s *second*
+    component rather than its first (F98).  Same measured reasoning, same
+    shape.
+
+    @param c1 The first codec; its value is the result.
+    @param c2 The second codec; its value (a [unit]) is discarded.
+    @returns A [codec_v2 a] that runs [c1] then [c2]. *)
+let drop_then_v (#a: eqtype) (c1: codec_v2 a) (c2: codec_v2 unit) : codec_v2 a = {
+  enc     = (fun (v: a) -> product_enc_v c1 c2 (v, ()));
+  dec     = (fun s -> match product_dec_v c1 c2 s with
+                      | None -> None
+                      | Some ((v, ()), r) -> Some (v, r));
+  wfcv    = (fun v -> c1.wfcv v && c2.wfcv ());
+  rest_cond   = (fun _ -> True);
+  rest_cond_v = (fun (v: a) r -> c1.rest_cond_v v r \/
+                                 c2.rest_cond_v () (Seq.append (encf_v c1 v) r));
+  law_fwd = (fun (v: a) e r ->
+    match c1.enc v, c2.enc () with
+    | Some e1, Some e2 ->
+      c1.law_fwd v e1 (Seq.append e2 r);
+      c2.law_fwd () e2 r;
+      Seq.append_assoc e1 e2 r
+    | _ -> ());
+  law_bwd = (fun s (v: a) r ->
+    match c1.dec s with
+    | None -> ()
+    | Some (v', r1) ->
+      c1.law_bwd s v' r1;
+      (match c2.dec r1 with
+       | None -> ()
+       | Some ((), r') ->
+         c2.law_bwd r1 () r';
+         (match c1.enc v', c2.enc () with
+          | Some e1, Some e2 -> Seq.append_assoc e1 e2 r
+          | _ -> ())));
+}
+
+
+(* ══ 4. `between` — the CODE_GUIDELINES definition, verbatim ════════════ *)
+
+(** [between_v] — run [open_], then [c], then [close], keeping only [c]'s
+    value: `drop_then (then_drop open_ c) close`.  Two instances and no proof
+    (F98).  This is the combinator `CODE_GUIDELINES.md` names, unchanged.
+
+    @param open_ The prefix codec; its [unit] value is discarded.
+    @param close The suffix codec; its [unit] value is discarded.
+    @param c The codec whose value survives.
+    @returns A [codec_v2 a] delimited by [open_] and [close]. *)
+let between_v (#a: eqtype) (open_ close: codec_v2 unit) (c: codec_v2 a) : codec_v2 a =
+  drop_then_v (then_drop_v open_ c) close
+
+
+(* ══ 5. `optional` — the genuine map_v-with-iso step ════════════════════ *)
+
+(** [either_unit_opt] — `either a unit -> option a`: [Inl x |-> Some x],
+    [Inr () |-> None].  Total, and (with [opt_either] below) a bijection —
+    which is why [optional_v] *can* be a [map_v], unlike [choice_v] whose
+    collapse `either a a -> a` has no inverse (F98). *)
+let either_unit_opt (#a: eqtype) (e: either a unit) : Tot (option a)
+  = match e with | Inl x -> Some x | Inr () -> None
+
+(** [opt_either] — the inverse of [either_unit_opt]: `option a -> either a unit`. *)
+let opt_either (#a: eqtype) (o: option a) : Tot (either a unit)
+  = match o with | Some x -> Inl x | None -> Inr ()
+
+(** [lemma_opt_either_fg] — `opt_either` undoes `either_unit_opt`.  Reflexivity
+    on both branches: the collapse is a bijection, so the [iso]'s forward law
+    costs nothing. *)
+let lemma_opt_either_fg (#a: eqtype) (x: either a unit) (y: option a)
+  : Lemma (requires either_unit_opt x = y)
+          (ensures opt_either y = x)
+  = ()
+
+(** [lemma_either_opt_gf] — and the reverse direction. *)
+let lemma_either_opt_gf (#a: eqtype) (y: option a) (x: either a unit)
+  : Lemma (requires opt_either y = x)
+          (ensures either_unit_opt x = y)
+  = ()
+
+(** [iso_either_unit_opt] — `either a unit ≅ option a`, with the inverse law as
+    the [iso]'s own two lemmas.  This is the whole of [optional]'s work: the
+    collapse is a bijection, so [map_v] consumes it with no side condition. *)
+let iso_either_unit_opt (#a: eqtype) : iso (either a unit) (option a) = {
+  i_f    = (fun (e: either a unit) -> Some (either_unit_opt #a e));
+  i_g    = (fun (o: option a) -> Some (opt_either #a o));
+  iso_fg = (fun (x: either a unit) (y: option a) -> lemma_opt_either_fg #a x y);
+  iso_gf = (fun (y: option a) (x: either a unit) -> lemma_either_opt_gf #a y x);
+}
+
+(** [optional_v] — PAPER §5.1's `optional`: `c` or nothing, tagged [0x00] /
+    [0x01] exactly as [sum_v] tags.
+
+    **This is the one facet of the six that IS the `map_v`-with-`iso` step**
+    F95 expected of all of them (F98, `spike-f98-optional.fst`):
+    `optional c = map_ (sum c (pure ()))` collapsing [either a unit] to
+    [option a].  Because that collapse has an inverse, the [iso]'s laws are
+    reflexivity and no side condition survives — contrast [choice_v].
+
+    @param c The codec for the present case.
+    @returns A [codec_v2 (option a)]: [Some x] as `0x00 ++ enc x`, [None] as
+      the single byte `0x01`. *)
+let optional_v (#a: eqtype) (c: codec_v2 a) : codec_v2 (option a)
+  = map_v (iso_either_unit_opt #a) (sum_v c (pure_v ()))
+
+
+(* ══ 6. `choice` — disjointness as a `squash` PARAMETER (F101) ══════════ *)
+
+(** [disjoint_v] — at most one arm encodes [x].
+
+    **This replaces F98's [choice_ok], which was the WRONG condition.**  F98
+    wrote `choice_ok c1 c2 = forall x. Some? (c1.enc x) \/ ~(Some? (c2.enc x))`,
+    which is *disjunctive*: the left disjunct alone makes it true, so it holds
+    when **both** codecs encode the same value — precisely the case [choice]
+    cannot resolve.  (Measured model: `c1 = c2 = fun _ -> Some []`.)  Requiring
+    it made the proof depend on an "absurdity" that is, in fact, false, so it
+    never closed at any rlimit.
+
+    @param c1 The first (dominating) arm.
+    @param c2 The second arm.
+    @param x The value to test.
+    @returns The proposition "not both arms encode [x]". *)
+let disjoint_v (#a: eqtype) (c1 c2: codec_v2 a) (x: a) : Tot prop
+  = ~(Some? (c1.enc x) /\ Some? (c2.enc x))
+
+(** [disjoint_all_v] — [disjoint_v] at every value: the [choice_v] precondition. *)
+let disjoint_all_v (#a: eqtype) (c1 c2: codec_v2 a) : Tot prop
+  = forall (y: a). disjoint_v c1 c2 y
+
+(** [disjoint_right_v] — from the disjointness parameter and "the right arm
+    encodes [x]", conclude "the left arm does not".
+
+    The parameter is `squash`-ed on purpose: **a `prop` that NAMES a fact is
+    opaque to SMT when it arrives as a hypothesis** (F101, six probes).  A
+    `squash` is what makes it usable.  Do not "simplify" it to a plain `prop`. *)
+let disjoint_right_v (#a: eqtype) (c1 c2: codec_v2 a) (x: a)
+  (pf: squash (disjoint_all_v c1 c2))
+  : Lemma (requires Some? (c2.enc x)) (ensures ~(Some? (c1.enc x)))
+  = ()
+
+(** [disjoint_left_v] — the mirror: from "the left arm encodes [x]", conclude
+    "the right arm does not". *)
+let disjoint_left_v (#a: eqtype) (c1 c2: codec_v2 a) (x: a)
+  (pf: squash (disjoint_all_v c1 c2))
+  : Lemma (requires Some? (c1.enc x)) (ensures ~(Some? (c2.enc x)))
+  = ()
+
+(** [choice_enc_v] — [c1] dominates: tag [0x00] when it encodes, else [0x01]
+    through [c2], else nothing.  Matches the legacy [choice]'s dominance. *)
+let choice_enc_v (#a: eqtype) (c1 c2: codec_v2 a) (x: a) : Tot (option byte_seq)
+  = match c1.enc x with
+    | Some e -> Some (Seq.cons 0x00uy e)
+    | None -> (match c2.enc x with
+               | Some e -> Some (Seq.cons 0x01uy e)
+               | None -> None)
+
+(** [choice_dec_v] — decode a tagged [sum_v] and forget the arm. *)
+let choice_dec_v (#a: eqtype) (c1 c2: codec_v2 a) (s: byte_seq)
+  : Tot (option (a & remainder s))
+  = match sum_dec_v c1 c2 s with
+    | None -> None
+    | Some (Inl x, r) -> Some (x, r)
+    | Some (Inr x, r) -> Some (x, r)
+
+(** [choice_enc_v_01] — when only [c2] encodes [x], the encoder takes the
+    [0x01] branch.  Trivial on its own; the *load-bearing* step
+    ([lemma_choice_auto_01_v]) is the one that uses disjointness to show the
+    [0x00] branch cannot have been taken. *)
+let choice_enc_v_01 (#a: eqtype) (c1 c2: codec_v2 a) (x: a) (e: byte_seq)
+  : Lemma (requires c1.enc x = None /\ c2.enc x = Some e)
+          (ensures choice_enc_v c1 c2 x = Some (Seq.cons 0x01uy e))
+  = ()
+
+(** [lemma_choice_auto_01_v] — with disjointness, "the right arm encodes [x]"
+    determines the tag: it must be [0x01].  This is exactly where F98's
+    [choice_ok] failed and F101's [disjoint_all] succeeds. *)
+let lemma_choice_auto_01_v (#a: eqtype) (c1 c2: codec_v2 a) (x: a) (e2: byte_seq)
+  (pf: squash (disjoint_all_v c1 c2))
+  : Lemma (requires c2.enc x = Some e2)
+          (ensures choice_enc_v c1 c2 x = Some (Seq.cons 0x01uy e2))
+  = match c1.enc x with
+    | Some e1 -> disjoint_right_v c1 c2 x pf
+    | None -> choice_enc_v_01 c1 c2 x e2
+
+(** [choice_law_fwd_v] — forward law.  Needs no side condition: whichever arm
+    produced [e], its own [law_fwd] recovers [x] under the matching tag. *)
+let choice_law_fwd_v (#a: eqtype) (c1 c2: codec_v2 a) (x: a) (e: byte_seq) (r: byte_seq)
+  : Lemma (requires choice_enc_v c1 c2 x = Some e)
+          (ensures choice_dec_v c1 c2 (Seq.append e r) = Some (x, r))
+  = match c1.enc x with
+    | Some e1 ->
+      c1.law_fwd x e1 r;
+      lemma_head_of_cons_append_v 0x00uy e1 r;
+      lemma_tail_of_cons_append_v 0x00uy e1 r
+    | None ->
+      (match c2.enc x with
+       | Some e2 ->
+         c2.law_fwd x e2 r;
+         lemma_head_of_cons_append_v 0x01uy e2 r;
+         lemma_tail_of_cons_append_v 0x01uy e2 r
+       | None -> ())
+
+(** [choice_law_bwd_v] — backward law.  The [0x00] branch follows whoever's
+    decoder ran; the [0x01] branch needs [disjointness] to rule out the
+    dominating arm, which is where the F98 attempt stalled. *)
+let choice_law_bwd_v (#a: eqtype) (c1 c2: codec_v2 a)
+  (pf: squash (disjoint_all_v c1 c2)) (s: byte_seq) (x: a) (r: remainder s)
+  : Lemma (requires choice_dec_v c1 c2 s = Some (x, r))
+          (ensures (exists (e: byte_seq). choice_enc_v c1 c2 x = Some e /\
+                                         s == Seq.append e r))
+  = if Seq.length s < 1 then ()
+    else
+      let tag = Seq.index s 0 in
+      let rest = Seq.slice s 1 (Seq.length s) in
+      if tag = 0x00uy then
+        (match c1.dec rest with
+         | Some (v1, r1) ->
+           c1.law_bwd rest v1 r1;
+           lemma_slice_recompose_v s;
+           (match c1.enc v1 with
+            | Some e1 ->
+              Seq.append_assoc (Seq.create 1 0x00uy) e1 r;
+              Classical.exists_intro
+                (fun (e: byte_seq) -> choice_enc_v c1 c2 x = Some e /\
+                                      s == Seq.append e r)
+                (Seq.cons 0x00uy e1)
+            | None -> ())
+         | None -> ())
+      else if tag = 0x01uy then
+        (match c2.dec rest with
+         | Some (v2, r2) ->
+           c2.law_bwd rest v2 r2;
+           lemma_choice_auto_01_v c1 c2 v2 (encf_v c2 v2) pf;
+           lemma_slice_recompose_v s;
+           (match c2.enc v2 with
+            | Some e2 ->
+              Seq.append_assoc (Seq.create 1 0x01uy) e2 r;
+              Classical.exists_intro
+                (fun (e: byte_seq) -> choice_enc_v c1 c2 x = Some e /\
+                                      s == Seq.append e r)
+                (Seq.cons 0x01uy e2)
+            | None -> ())
+         | None -> ())
+      else ()
+
+(** [choice_v] — PAPER §5.1's `<|>`: first-success alternative over a single
+    type [a], where [c1] dominates.
+
+    **The shape is F101's, decided and measured** (`spike-f100-choice-shape.fst`,
+    0 admit, no [--z3rlimit]).  Disjointness arrives as a `squash` PARAMETER,
+    so **no law carries a side condition** and `REQ-ISO-COMPOSES` is met, not
+    bent — per F94's rule that a value-dependent property travels as a
+    parameter.
+
+    > **Cost, recorded:** every caller of [choice_v] now owes a
+    > `disjoint_all_v` proof.  For disjoint pairs (`satisfy p` / `token`) that
+    > is trivial; for overlapping ones it is impossible, and such a pair needs
+    > a different combinator.  Do not assume it away.
+
+    @param c1 The dominating arm.
+    @param c2 The fallback arm.
+    @param pf Squashed disjointness: no value is encoded by both arms.
+    @returns A [codec_v2 a] that encodes with whichever arm can and decodes by
+      tag. *)
+let choice_v (#a: eqtype) (c1 c2: codec_v2 a) (pf: squash (disjoint_all_v c1 c2))
+  : codec_v2 a = {
+  enc     = choice_enc_v c1 c2;
+  dec     = choice_dec_v c1 c2;
+  wfcv    = (fun x -> c1.wfcv x || c2.wfcv x);
+  rest_cond   = (fun _ -> True);
+  rest_cond_v = (fun x r -> c1.rest_cond_v x r \/ c2.rest_cond_v x r);
+  law_fwd = (fun x e r -> choice_law_fwd_v c1 c2 x e r);
+  law_bwd = (fun s x r -> choice_law_bwd_v c1 c2 pf s x r);
+}
